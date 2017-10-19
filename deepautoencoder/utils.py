@@ -8,15 +8,16 @@ def get_batch(X, X_, size):
 
 def noise_validator(noise, allowed_noises):
     '''Validates the noise provided'''
-    try:
-        if noise in allowed_noises:
-            return True
-        elif noise.split('-')[0] == 'mask' and float(noise.split('-')[1]):
-            t = float(noise.split('-')[1])
-            if t >= 0.0 and t <= 1.0:
+    for n in noise:
+        try:
+            if n in allowed_noises:
                 return True
-            else:
-                return False
-    except:
-        return False
-    pass
+            elif n.split('-')[0] == 'mask' and float(n.split('-')[1]):
+                t = float(n.split('-')[1])
+                if t >= 0.0 and t <= 1.0:
+                    return True
+                else:
+                    return False
+        except:
+            return False
+        pass

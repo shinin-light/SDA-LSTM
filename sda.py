@@ -11,8 +11,8 @@ print("Creating SDA...")
 train_X = values[idx]
 test_X = values[~idx]
 
-model = StackedAutoEncoder(dims=[100, 50, 20], activations=['relu', 'relu', 'relu'], noise='mask-0.1',
-                        epoch=[3000, 3000, 3000], loss='rmse', lr=0.007, batch_size=500, print_step=200)
+model = StackedAutoEncoder(dims=[25, 25, 25], activations=['relu', 'relu', 'relu'], decoding_activations=['sigmoid', 'softplus', 'softplus'], noise=['mask-0.3','gaussian','gaussian'],
+                        epoch=[3000, 3000, 3000], loss=['cross-entropy','rmse','rmse'], lr=0.01, batch_size=100, print_step=200)
 model.fit(train_X)
 test_X_ = model.transform(test_X)
 
