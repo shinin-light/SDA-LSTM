@@ -12,13 +12,9 @@ class ForwardClassifier:
         global allowed_activations, allowed_noises, allowed_losses
         assert 'list' in str(
             type(self.dims)), 'dims must be a list even if there is one layer.'
-        assert len(self.epoch) == len(
-            self.dims), "No. of epochs must equal to no. of hidden layers"
         assert len(self.activations) == len(
             self.dims), "No. of activations must equal to no. of hidden layers"
-        assert all(
-            True if x > 0 else False
-            for x in self.epoch), "No. of epoch must be atleast 1"
+        assert self.epoch > 0, "No. of epoch must be atleast 1"
         assert set(self.activations + allowed_activations) == set(
             allowed_activations), "Incorrect activation given."
         assert self.output_activation in allowed_activations, "Incorrect output activation given."
@@ -43,8 +39,11 @@ class ForwardClassifier:
         tf.reset_default_graph()
         input_dim = len(data_x[0])
         output_dim = len(data_y[0])
-        hidden_dim = self.dims[0]
-        
+        if(self.depth > 0):
+            hidden_dim = self.dims[0]
+        else:
+            hidden_dim = output_dim
+
         sess = tf.Session()
 
         x = tf.placeholder(dtype=tf.float32, shape=[None, input_dim], name='x')
@@ -80,7 +79,7 @@ class ForwardClassifier:
         train_op = tf.train.GradientDescentOptimizer(self.lr).minimize(loss) #TODO: Use also AdamOptimizer, GradientDescentOptimizer
 
         sess.run(tf.global_variables_initializer())#initialize_all_variables())
-        for i in range(self.epoch[0]):
+        for i in range(self.epoch):
             b_x, b_y = self.get_batch(data_x, data_y, self.batch_size)
             sess.run(train_op, feed_dict={x: b_x, y: b_y})
             if (i + 1) % self.print_step == 0:
