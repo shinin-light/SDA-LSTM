@@ -76,7 +76,7 @@ class ForwardClassifier:
         elif self.loss == 'sigmoid-cross-entropy':
             loss = tf.reduce_mean(
                 tf.nn.sigmoid_cross_entropy_with_logits(logits=status, labels=y))
-        train_op = tf.train.GradientDescentOptimizer(self.lr).minimize(loss) #TODO: Use also AdamOptimizer, GradientDescentOptimizer
+        train_op = tf.train.AdamOptimizer(self.lr).minimize(loss) #TODO: Use also AdamOptimizer, GradientDescentOptimizer
 
         sess.run(tf.global_variables_initializer())#initialize_all_variables())
         for i in range(self.epoch):
