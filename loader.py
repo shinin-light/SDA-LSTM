@@ -13,8 +13,10 @@ classes = np.array([],dtype=float)
 classes = np.reshape(values, (-1,classes_num))
 
 print("Reading dataset...")
-for r in data["records"]:
-    #print(r["id"])
+for i in range(len(data["records"])):
+    if(i % 1000 == 0)
+        print('Reading record n.{0}...'.format(i))
+    r = data["records"][i]
     for w in r["waves"]:
         tmp = np.reshape(w["values"], (-1,attributes_num))
         values = np.append(values, tmp, axis=0)

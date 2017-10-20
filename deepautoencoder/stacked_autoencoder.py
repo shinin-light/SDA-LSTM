@@ -93,9 +93,9 @@ class StackedAutoEncoder:
 
         weights, biases, decoding_biases = [],[],[]
         for w, b, b_ in zip(self.weights, self.biases, self.decoding_biases):
-            weights.append(tf.Variable(np.array(w, dtype=np.float32)))
-            biases.append(tf.Variable(np.array(b, dtype=np.float32)))
-            decoding_biases.append(tf.Variable(np.array(b_, dtype=np.float32)))
+            weights.append(tf.Variable(np.array(w), dtype=tf.float32))
+            biases.append(tf.Variable(np.array(b), dtype=tf.float32))
+            decoding_biases.append(tf.Variable(np.array(b_), dtype=tf.float32))
 
         status = x
         #Encoding
@@ -121,7 +121,12 @@ class StackedAutoEncoder:
                 l = sess.run(loss, feed_dict={x: masked_data_x, x_: data_x})
                 print('epoch {0}: global loss = {1}'.format(i, l))
 
-    def transform(self, data):
+        for i in range(self.depth):
+            self.weights[i] = sess.run(weights[i])
+            self.biases[i] = sess.run(biases[i])
+            self.decoding_biases[i] = sess.run(decoding_biases[i])
+
+    def encode(self, data):
         tf.reset_default_graph()
         sess = tf.Session()
         x = tf.constant(data, dtype=tf.float32)
@@ -132,9 +137,31 @@ class StackedAutoEncoder:
             x = self.activate(layer, a)
         return x.eval(session=sess)
 
-    def fit_transform(self, x):
+    def decode(self, data):
+        tf.reset_default_graph()
+        sess = tf.Session()
+        x = tf.constant(data, dtype=tf.float32)
+        for w, b, a in zip(self.weights[::-1], self.decoding_biases[::-1], self.decoding_activations[::-1]):
+            weight = tf.transpose(tf.constant(w, dtype=tf.float32))
+            bias = tf.constant(b, dtype=tf.float32)
+            layer = tf.matmul(x, weight) + bias
+            x = self.activate(layer, a)
+        return x.eval(session=sess)
+
+    def test(self, data, samples_shown=1, threshold=0.0):
+        data_ = self.decode(self.encode(data))
+        rmse = np.sqrt(np.mean(np.power(data - data_, 2)))
+        print('Test rmse: {0}'.format(rmse))
+        for i in np.random.choice(len(data), samples_shown):
+            print('Sample {0}'.format(i))
+            for d, d_ in zip(data[i], data_[i]):
+                if(abs(d-d_) >= threshold):
+                    print('\tOriginal: {0:.2f} --- Reconstructed: {1:.2f} --- Difference: {2:.2f}'.format(d,d_,d-d_))
+
+    def fit_encode(self, x):
         self.fit(x)
-        return self.transform(x)
+        self.finetune(x)
+        return self.encode(x)
 
     def run(self, data_x, data_x_, hidden_dim, activation, decoding_activation, loss, lr,
             print_step, epoch, batch_size=100):
