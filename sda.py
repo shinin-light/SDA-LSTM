@@ -7,8 +7,13 @@ e_classes = np.load("./data/e_classes.npy")
 t_values = np.load("./data/t_records.npy")
 t_classes = np.load("./data/t_classes.npy")
 
-e_values = np.delete(e_values, 0, 1)
-t_values = np.delete(t_values, 0, 1)
+attributes_num = len(e_values[0][0])
+classes_num = len(e_classes[0][0])
+
+e_values = np.reshape(e_values,(-1,attributes_num))
+t_values = np.reshape(t_values,(-1,attributes_num))
+e_classes = np.reshape(e_classes,(-1,classes_num))
+t_classes = np.reshape(t_classes,(-1,classes_num))
 
 #SDAE VARIABLES
 #Reduction of the bigger dataset to the dimension of the smaller one
