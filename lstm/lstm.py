@@ -53,12 +53,11 @@ class Lstm:
         assert self.initialization_function in allowed_initializers, "Incorrect initializer given."
         assert self.optimization_function in allowed_optimizers, "Incorrect optimizer given."
 
-    def __init__(self, input_size, state_size, output_size, max_sequence_length, activation_function, loss_function, 
+    def __init__(self, input_size, state_size, output_size, activation_function, loss_function, 
                 initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, batch_size=16):
         self.input_size = input_size
         self.state_size = state_size
         self.output_size = output_size
-        self.max_sequence_length = max_sequence_length
         self.activation_function = activation_function
         self.loss_function = loss_function
         self.initialization_function = initialization_function
@@ -74,14 +73,17 @@ class Lstm:
         self.y = tf.placeholder(tf.float32, [self.batch_size, None, self.output_size]) #batch - timeseries - class vector
         self.sequence_length = tf.placeholder(tf.int32, [self.batch_size]) #batch - timeseries length TODO is it ok?
         initializer = self.get_initializater(self.initialization_function)
+        activation = self.get_activation(self.activation_function) #TODO check where activation is used
+        
         cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
-
-        activation = self.get_activation(self.activation_function)
 
         outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
 
         self.loss = self.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
         self.optimizer = self.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate, loss=self.loss)
+
+        correct_prediction = tf.equal(tf.argmax(outputs, 2), tf.argmax(self.y, 2))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
         #Saver
         self.saver = tf.train.Saver()
@@ -124,7 +126,22 @@ class Lstm:
                     avg_loss += loss
             avg_loss /= (train_dataset_num * batches_per_epoch)
             print("Test global loss = {0}".format(avg_loss))
-        
+
+    def test_accuracy(self, X, Y):
+        train_size = len(X[0])
+        train_dataset_num = len(X)
+        batches_per_epoch = int(train_size / (self.batch_size * train_dataset_num))
+        with tf.Session() as sess:
+            self.saver.restore(sess, tf.train.latest_checkpoint('.'))
+            avg_accuracy = 0.
+            for i in range(batches_per_epoch):
+                batches_x, batches_y, batches_length = get_sequential_batches(X, Y, i * self.batch_size, self.batch_size)
+                for dataset in range(train_dataset_num):
+                    accuracy = self.accuracy.eval(feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
+                    avg_accuracy += accuracy
+            avg_accuracy /= (train_dataset_num * batches_per_epoch)
+            print("Test global accuracy = {0}".format(avg_accuracy))
+
     def get_activation(self, name):
         if name == 'sigmoid':
             return tf.nn.sigmoid
@@ -159,13 +176,14 @@ class Lstm:
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
-lstm = Lstm(input_size=30, state_size=2, output_size=20, max_sequence_length=6, activation_function='softmax', 
-            loss_function='softmax-cross-entropy', initialization_function='uniform', optimization_function='gradient-descent',
-            learning_rate=0.1, batch_size=64, epoch=30)
+lstm = Lstm(input_size=30, state_size=50, output_size=20, activation_function='softmax', loss_function='softmax-cross-entropy',
+            initialization_function='uniform', optimization_function='gradient-descent',
+            learning_rate=1, batch_size=32, epoch=100)
             
 selection = np.random.choice(len(e_values), min(len(t_values),len(e_values)), replace=False)
 e_values = e_values[selection]
 e_classes = e_classes[selection]
 idx = np.random.rand(len(e_values)) < 0.8
 lstm.train([e_values[idx],t_values[idx]], [e_classes[idx],t_classes[idx]])
-lstm.test([e_values[~idx],t_values[~idx]], [e_classes[~idx],t_classes[~idx]])
+lstm.test_loss([e_values[~idx],t_values[~idx]], [e_classes[~idx],t_classes[~idx]])
+lstm.test_accuracy([e_values[~idx],t_values[~idx]], [e_classes[~idx],t_classes[~idx]])
