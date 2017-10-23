@@ -19,18 +19,17 @@ e_classes = e_classes1[:,1:]
 t_values = t_values1[:,:-1,0:30]
 t_classes = t_classes1[:,1:]
 
-def get_batch(X, X_, size): #X and X_ are tuples
-    assert (size % len(X)) == 0, "Size should be a multiple of dataset number"
+def get_batches(X, X_, size): #X and X_ are tuples
     assert size > 0, "Size should positive"
     dim = len(X)
     batch = []
     batch_ = []
     sequence_number = []
     for i in range(dim):
-        idx = np.random.choice(len(X[i]), int(size / dim), replace=False)
+        idx = np.random.choice(len(X[i]), size, replace=False)
         batch.append(X[i][idx])
         batch_.append(X_[i][idx])
-        sequence_number.append(np.full(int(size / dim), len(X[i][0])))
+        sequence_number.append(np.full(size, len(X[i][0])))
     return batch, batch_, sequence_number
 
 class Lstm:
@@ -58,60 +57,56 @@ class Lstm:
         self._create_model()
 
     def _create_model(self):
-        self.x = tf.placeholder(tf.float32, [None, None, self.input_size]) #batch - timeseries - input vector
-        self.y = tf.placeholder(tf.float32, [None, None, self.output_size]) #batch - timeseries - class vector
-        self.sequence_length = tf.placeholder(tf.int32, [None, ]) #batch - timeseries length
+        self.x = tf.placeholder(tf.float32, [self.batch_size, None, self.input_size]) #batch - timeseries - input vector
+        self.y = tf.placeholder(tf.float32, [self.batch_size, None, self.output_size]) #batch - timeseries - class vector
+        self.sequence_length = tf.placeholder(tf.int32, [self.batch_size]) #batch - timeseries length TODO is it ok?
 
         initializer = self.get_initializater(self.initialization_function)
-        cell = tf.nn.rnn_cell.LSTMCell(self.state_size, self.input_size, initializer=initializer)
-        cell_out = tf.contrib.rnn.OutputProjectionWrapper(cell, self.output_size)
+        cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
 
-        outputs, _ = tf.nn.dynamic_rnn(cell_out, self.x, sequence_length=self.sequence_length, dtype=tf.float32)
+        activation = self.get_activation(self.activation_function)
 
-        prediction = self.get_activation(tf.reshape(outputs, [-1, self.output_size]), name=self.activation_function)
-        classes = tf.reshape(self.y, [-1, self.output_size]) 
+        outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
 
-        self.loss = self.get_loss(logits=prediction, labels=classes, name=self.loss_function)
+        self.loss = self.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
         self.optimizer = self.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate, loss=self.loss)
 
         #Tensorboard
-        writer = tf.summary.FileWriter("/Users/danielefongo/Thesis/SDA-LSTM/lstm/", graph=tf.get_default_graph())
+        writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
     
-    def train(self, train_set):
-        train_total_size = min(map(len,train_set[0]))
-        train_dataset_num = len(train_set[0])
-        train_xs = train_set[0] #array of datasets
-        train_ys = train_set[1] #array of datasets
-        train_total_batch = int(train_total_size / self.batch_size)
+    def train(self, X, Y):
+        train_size = len(X[0])
+        train_dataset_num = len(X)
+        batches_per_epoch = int(train_size / (self.batch_size * train_dataset_num))
+        initial_learning_rate = self.learning_rate
 
-        print(train_total_size, train_dataset_num, train_total_batch)
-        max_accuracy = 0.
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for epoch in range(self.epoch):
                 avg_loss = 0.
-                for i in range(train_total_batch):
-                    batches_x, batches_y, batches_length = get_batch(train_set[0], train_set[1], self.batch_size)
-                    for batch in range(train_dataset_num):
-                        sess.run(self.optimizer, feed_dict={self.x: batches_x[batch], self.y: batches_y[batch], self.sequence_length: batches_length[batch]})
-                        loss = self.loss.eval(feed_dict={self.x: batches_x[batch], self.y: batches_y[batch], self.sequence_length: batches_length[batch]})
+                self.learning_rate = initial_learning_rate / (10 * (epoch + 1))
+                for i in range(batches_per_epoch):
+                    batches_x, batches_y, batches_length = get_batches(X, Y, self.batch_size)
+                    for dataset in range(train_dataset_num):
+                        sess.run(self.optimizer, feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
+                        loss = self.loss.eval(feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
                         avg_loss += loss
-                avg_loss /= train_total_batch
+                avg_loss /= (batches_per_epoch * train_dataset_num)
                 print("Epoch {0}, loss = {1}".format(epoch, avg_loss))
         
-    def get_activation(self, linear, name):
+    def get_activation(self, name):
         if name == 'sigmoid':
-            return tf.nn.sigmoid(linear)
+            return tf.nn.sigmoid
         elif name == 'softmax':
-            return tf.nn.softmax(linear)
+            return tf.nn.softmax
         elif name == 'softplus':
-            return tf.nn.softplus(linear)
+            return tf.nn.softplus
         elif name == 'linear':
             return linear
         elif name == 'tanh':
-            return tf.nn.tanh(linear)
+            return tf.nn.tanh
         elif name == 'relu':
-            return tf.nn.relu(linear)
+            return tf.nn.relu
 
     def get_loss(self, logits, labels, name):
         if name == 'rmse':
@@ -133,10 +128,11 @@ class Lstm:
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
-lstm = Lstm(input_size=30, state_size=64, output_size=20, max_sequence_length=6, activation_function='softmax', 
-            loss_function='softmax-cross-entropy', initialization_function='xavier', optimization_function='gradient-descent',
-            learning_rate=0.1, batch_size=32)
+lstm = Lstm(input_size=30, state_size=2, output_size=20, max_sequence_length=6, activation_function='softmax', 
+            loss_function='softmax-cross-entropy', initialization_function='uniform', optimization_function='adam',
+            learning_rate=0.1, batch_size=64)
+            
 e_idx = np.random.rand(len(e_values)) < 0.8
-#lstm.train(([e_values[e_idx]], [e_classes[e_idx]]))
+#lstm.train([e_values[e_idx]], [e_classes[e_idx]])
 t_idx = np.random.rand(len(t_values)) < 0.8
 lstm.train(([e_values[e_idx],t_values[t_idx]], [e_classes[e_idx],t_classes[t_idx]]))
