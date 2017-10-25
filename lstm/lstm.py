@@ -14,10 +14,41 @@ e_classes1 = np.load("../data/e_classes.npy")
 t_values1= np.load("../data/t_records.npy")
 t_classes1 = np.load("../data/t_classes.npy")
 
-e_values = e_values1[:,:-1,0:30]
-e_classes = e_classes1[:,1:]
-t_values = t_values1[:,:-1,0:30]
-t_classes = t_classes1[:,1:]
+def shift_padding(X, X_, max_sequence_length):
+    assert len(X) > 0, "Dataset should have at least one timeseries"
+    assert len(X) == len(X_), "Input and classes should have the same length"
+    assert max_sequence_length > 0, "Max sequence length should be positive" 
+    dim = len(X)
+    input_size = len(X[0][0])
+    class_size = len(X_[0][0])
+    newX = []
+    newX_ = []
+    sequence_length = []
+
+    for index in range(len(X_)):
+        start = 0
+        end = 0
+
+        if(np.max(X_[index]) > 0): #at least 1 valid class
+            start = np.where(np.array([np.max(wave) for wave in X_[index]]) > 0)[0][0]
+            end = np.where(np.array([np.max(wave) for wave in X_[index]]) > 0)[0][-1:][0]
+        if(end > max_sequence_length):
+            end = max_sequence_length
+        length = end - start
+
+        shifted_classes = np.concatenate((X_[index][1:], [np.zeros(class_size)]))
+        waves_indexes = np.arange(start, end)
+        if(length < max_sequence_length):
+            tmpX = np.concatenate((X[index][waves_indexes], [np.zeros(input_size) for i in range(length, max_sequence_length)]))
+            tmpX_ = np.concatenate((shifted_classes[waves_indexes], [np.zeros(class_size) for i in range(length, max_sequence_length)]))
+        else:
+            tmpX = np.array(X[index][waves_indexes])
+            tmpX_ = np.array(shifted_classes[waves_indexes])
+            
+        newX.append(tmpX)
+        newX_.append(tmpX_)
+        sequence_length.append(length)
+    return np.array(newX), np.array(newX_), np.array(sequence_length)
 
 def get_batches(X, X_, size): #X and X_ are tuples
     assert size > 0, "Size should positive"
@@ -176,14 +207,15 @@ class Lstm:
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
-lstm = Lstm(input_size=30, state_size=50, output_size=20, activation_function='softmax', loss_function='softmax-cross-entropy',
+lstm = Lstm(input_size=50, state_size=50, output_size=20, activation_function='softmax', loss_function='softmax-cross-entropy',
             initialization_function='uniform', optimization_function='gradient-descent',
-            learning_rate=1, batch_size=32, epoch=100)
-            
-selection = np.random.choice(len(e_values), min(len(t_values),len(e_values)), replace=False)
-e_values = e_values[selection]
-e_classes = e_classes[selection]
+            learning_rate=0.1, batch_size=32, epoch=10)
+
+e_values = e_values1[:,:-1]
+e_classes = e_classes1[:,1:]
+t_values = t_values1[:,:-1]
+t_classes = t_classes1[:,1:]
+
 idx = np.random.rand(len(e_values)) < 0.8
-lstm.train([e_values[idx],t_values[idx]], [e_classes[idx],t_classes[idx]])
-lstm.test_loss([e_values[~idx],t_values[~idx]], [e_classes[~idx],t_classes[~idx]])
-lstm.test_accuracy([e_values[~idx],t_values[~idx]], [e_classes[~idx],t_classes[~idx]])
+lstm.train([e_values[idx]], [e_classes[idx]])
+lstm.test_accuracy([e_values[~idx]], [e_classes[~idx]])
