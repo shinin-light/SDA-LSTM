@@ -9,11 +9,6 @@ allowed_losses = ['rmse', 'softmax-cross-entropy', 'sigmoid-cross-entropy']
 allowed_initializers = ['uniform', 'xavier']
 allowed_optimizers = ['gradient-descent','adam']
 
-e_values1 = np.load("../data/e_records.npy")
-e_classes1 = np.load("../data/e_classes.npy")
-t_values1= np.load("../data/t_records.npy")
-t_classes1 = np.load("../data/t_classes.npy")
-
 def shift_padding(X, X_, max_sequence_length):
     assert len(X) > 0, "Dataset should have at least one timeseries"
     assert len(X) == len(X_), "Input and classes should have the same length"
@@ -49,7 +44,7 @@ def shift_padding(X, X_, max_sequence_length):
         newX_.append(tmpX_)
         sequence_length.append(length)
     return np.array(newX), np.array(newX_), np.array(sequence_length)
-
+'''
 def get_batches(X, X_, size): #X and X_ are tuples
     assert size > 0, "Size should positive"
     dim = len(X)
@@ -62,19 +57,17 @@ def get_batches(X, X_, size): #X and X_ are tuples
         batch_.append(X_[i][idx])
         sequence_number.append(np.full(size, len(X[i][0])))
     return batch, batch_, sequence_number
+'''
 
-def get_sequential_batches(X, X_, start, size): #X and X_ are tuples
+def get_batches(X, X_, lengths, size): 
     assert size > 0, "Size should positive"
-    assert start >= 0, "Start should not be negative"
-    dim = len(X)
-    batch = []
-    batch_ = []
-    sequence_number = []
-    for i in range(dim):
-        batch.append(X[i][start:start+size])
-        batch_.append(X_[i][start:start+size])
-        sequence_number.append(np.full(size, len(X[i][0])))
-    return batch, batch_, sequence_number
+    idx = np.random.choice(len(X), size, replace=False)
+    return X[idx], X_[idx], lengths[idx]
+
+def get_sequential_batches(X, X_, lengths, start, size):
+    assert size > 0, "Size should positive"
+    assert start >= 0, "Start should not be negative"   
+    return X[start:start+size], X_[start:start+size], lengths[start:start+size]
 
 class Lstm:
     def assertions(self):
@@ -122,55 +115,49 @@ class Lstm:
         #Tensorboard
         #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
     
-    def train(self, X, Y):
-        train_size = len(X[0])
-        train_dataset_num = len(X)
-        batches_per_epoch = int(train_size / (self.batch_size * train_dataset_num))
+    def train(self, X, Y, lengths):
+        batches_per_epoch = int(len(X) / self.batch_size)
         initial_learning_rate = self.learning_rate
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for epoch in range(self.epoch):
                 avg_loss = 0.
-                self.learning_rate = initial_learning_rate / (10 * (epoch + 1))
+                #self.learning_rate = initial_learning_rate / (10 * (epoch + 1))
                 for i in range(batches_per_epoch):
-                    batches_x, batches_y, batches_length = get_batches(X, Y, self.batch_size)
-                    for dataset in range(train_dataset_num):
-                        sess.run(self.optimizer, feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
-                        loss = self.loss.eval(feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
-                        avg_loss += loss
-                avg_loss /= (batches_per_epoch * train_dataset_num)
+                    batches_x, batches_y, batches_length = get_batches(X, Y, lengths, self.batch_size)
+                    sess.run(self.optimizer, feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                    loss = self.loss.eval(feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                    avg_loss += loss
+
+                avg_loss /= batches_per_epoch
                 print("Epoch {0}, loss = {1}".format(epoch, avg_loss))
             self.saver.save(sess, './checkpoint',0)
     
-    def test_loss(self, X, Y):
-        train_size = len(X[0])
-        train_dataset_num = len(X)
-        batches_per_epoch = int(train_size / (self.batch_size * train_dataset_num))
+    def test_loss(self, X, Y, lengths):
+        batches_per_epoch = int(len(X) / self.batch_size)
+
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('.'))
             avg_loss = 0.
             for i in range(batches_per_epoch):
-                batches_x, batches_y, batches_length = get_sequential_batches(X, Y, i * self.batch_size, self.batch_size)
-                for dataset in range(train_dataset_num):
-                    loss = self.loss.eval(feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
-                    avg_loss += loss
-            avg_loss /= (train_dataset_num * batches_per_epoch)
+                batches_x, batches_y, batches_length = get_sequential_batches(X, Y, lengths, i * self.batch_size, self.batch_size)  
+                loss = self.loss.eval(feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                avg_loss += loss
+            avg_loss /= batches_per_epoch
             print("Test global loss = {0}".format(avg_loss))
 
-    def test_accuracy(self, X, Y):
-        train_size = len(X[0])
-        train_dataset_num = len(X)
-        batches_per_epoch = int(train_size / (self.batch_size * train_dataset_num))
+    def test_accuracy(self, X, Y, lengths):
+        batches_per_epoch = int(len(X) / self.batch_size)
+
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('.'))
             avg_accuracy = 0.
             for i in range(batches_per_epoch):
-                batches_x, batches_y, batches_length = get_sequential_batches(X, Y, i * self.batch_size, self.batch_size)
-                for dataset in range(train_dataset_num):
-                    accuracy = self.accuracy.eval(feed_dict={self.x: batches_x[dataset], self.y: batches_y[dataset], self.sequence_length: batches_length[dataset]})
-                    avg_accuracy += accuracy
-            avg_accuracy /= (train_dataset_num * batches_per_epoch)
+                batches_x, batches_y, batches_length = get_sequential_batches(X, Y, lengths, i * self.batch_size, self.batch_size)  
+                accuracy = self.accuracy.eval(feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                avg_accuracy += accuracy
+            avg_accuracy /= batches_per_epoch
             print("Test global accuracy = {0}".format(avg_accuracy))
 
     def get_activation(self, name):
@@ -208,14 +195,21 @@ class Lstm:
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 lstm = Lstm(input_size=50, state_size=50, output_size=20, activation_function='softmax', loss_function='softmax-cross-entropy',
-            initialization_function='uniform', optimization_function='gradient-descent',
-            learning_rate=0.1, batch_size=32, epoch=10)
+            initialization_function='xavier', optimization_function='gradient-descent',
+            learning_rate=0.1, batch_size=32, epoch=20)
 
-e_values = e_values1[:,:-1]
-e_classes = e_classes1[:,1:]
-t_values = t_values1[:,:-1]
-t_classes = t_classes1[:,1:]
+e_values1 = np.load("../data/e_records.npy")
+e_classes1 = np.load("../data/e_classes.npy")
+t_values1= np.load("../data/t_records.npy")
+t_classes1 = np.load("../data/t_classes.npy")
 
-idx = np.random.rand(len(e_values)) < 0.8
-lstm.train([e_values[idx]], [e_classes[idx]])
-lstm.test_accuracy([e_values[~idx]], [e_classes[~idx]])
+e_values, e_classes, e_lengths = shift_padding(e_values1, e_classes1, 5)
+t_values, t_classes, t_lengths = shift_padding(t_values1, t_classes1, 5)
+values = np.concatenate((e_values, t_values))
+classes = np.concatenate((e_classes, t_classes))
+lengths = np.concatenate((e_lengths, t_lengths))
+
+idx = np.random.rand(len(values)) < 0.8
+lstm.train(values[idx], classes[idx], lengths[idx])
+lstm.test_loss(values[~idx], classes[~idx], lengths[~idx])
+lstm.test_accuracy(values[~idx], classes[~idx], lengths[~idx])
