@@ -5,7 +5,7 @@ import time
 from tensorflow.contrib import rnn
 
 allowed_activations = ['sigmoid', 'tanh', 'softmax', 'relu', 'linear', 'softplus']
-allowed_losses = ['rmse', 'softmax-cross-entropy', 'sigmoid-cross-entropy']
+allowed_losses = ['rmse', 'softmax-cross-entropy', 'sparse-softmax-cross-entropy', 'sigmoid-cross-entropy']
 allowed_initializers = ['uniform', 'xavier']
 allowed_optimizers = ['gradient-descent','adam']
 
@@ -102,6 +102,8 @@ class Lstm:
         cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
 
         outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
+        
+        outputs = activation(outputs)
 
         self.loss = self.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
         self.optimizer = self.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate, loss=self.loss)
@@ -123,42 +125,34 @@ class Lstm:
             sess.run(tf.global_variables_initializer())
             for epoch in range(self.epoch):
                 avg_loss = 0.
+                avg_accuracy = 0.
                 #self.learning_rate = initial_learning_rate / (10 * (epoch + 1))
                 for i in range(batches_per_epoch):
                     batches_x, batches_y, batches_length = get_batches(X, Y, lengths, self.batch_size)
                     sess.run(self.optimizer, feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
-                    loss = self.loss.eval(feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                    loss, accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
                     avg_loss += loss
-
+                    avg_accuracy += accuracy
                 avg_loss /= batches_per_epoch
-                print("Epoch {0}, loss = {1}".format(epoch, avg_loss))
+                avg_accuracy /= batches_per_epoch
+                print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.2f}%".format(epoch, avg_loss, avg_accuracy * 100))
             self.saver.save(sess, './checkpoint',0)
     
-    def test_loss(self, X, Y, lengths):
-        batches_per_epoch = int(len(X) / self.batch_size)
-
-        with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('.'))
-            avg_loss = 0.
-            for i in range(batches_per_epoch):
-                batches_x, batches_y, batches_length = get_sequential_batches(X, Y, lengths, i * self.batch_size, self.batch_size)  
-                loss = self.loss.eval(feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
-                avg_loss += loss
-            avg_loss /= batches_per_epoch
-            print("Test global loss = {0}".format(avg_loss))
-
-    def test_accuracy(self, X, Y, lengths):
+    def test(self, X, Y, lengths):
         batches_per_epoch = int(len(X) / self.batch_size)
 
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('.'))
             avg_accuracy = 0.
+            avg_loss = 0.
             for i in range(batches_per_epoch):
                 batches_x, batches_y, batches_length = get_sequential_batches(X, Y, lengths, i * self.batch_size, self.batch_size)  
-                accuracy = self.accuracy.eval(feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                loss,accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                avg_loss += loss
                 avg_accuracy += accuracy
+            avg_loss /= batches_per_epoch
             avg_accuracy /= batches_per_epoch
-            print("Test global accuracy = {0}".format(avg_accuracy))
+            print("Test: loss = {0:.6f}, accuracy = {1:.2f}%".format(avg_loss, avg_accuracy * 100))
 
     def get_activation(self, name):
         if name == 'sigmoid':
@@ -179,6 +173,8 @@ class Lstm:
             return tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(labels, logits))))
         elif name == 'softmax-cross-entropy':
             return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
+        elif name == 'sparse-softmax-cross-entropy':
+            return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, 2)))
         elif name == 'sigmoid-cross-entropy':
             return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
 
@@ -194,9 +190,9 @@ class Lstm:
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
-lstm = Lstm(input_size=50, state_size=50, output_size=20, activation_function='softmax', loss_function='softmax-cross-entropy',
-            initialization_function='xavier', optimization_function='gradient-descent',
-            learning_rate=0.1, batch_size=32, epoch=20)
+lstm = Lstm(input_size=50, state_size=20, output_size=20, activation_function='softmax', loss_function='sparse-softmax-cross-entropy',
+            initialization_function='uniform', optimization_function='gradient-descent',
+            learning_rate=0.1, batch_size=200, epoch=50)
 
 e_values1 = np.load("../data/e_records.npy")
 e_classes1 = np.load("../data/e_classes.npy")
@@ -205,11 +201,10 @@ t_classes1 = np.load("../data/t_classes.npy")
 
 e_values, e_classes, e_lengths = shift_padding(e_values1, e_classes1, 5)
 t_values, t_classes, t_lengths = shift_padding(t_values1, t_classes1, 5)
-values = np.concatenate((e_values, t_values))
-classes = np.concatenate((e_classes, t_classes))
-lengths = np.concatenate((e_lengths, t_lengths))
+values = e_values #np.concatenate((e_values, t_values))
+classes = e_classes #np.concatenate((e_classes, t_classes))
+lengths = e_lengths #np.concatenate((e_lengths, t_lengths))
 
 idx = np.random.rand(len(values)) < 0.8
 lstm.train(values[idx], classes[idx], lengths[idx])
-lstm.test_loss(values[~idx], classes[~idx], lengths[~idx])
-lstm.test_accuracy(values[~idx], classes[~idx], lengths[~idx])
+lstm.test(values[~idx], classes[~idx], lengths[~idx])
