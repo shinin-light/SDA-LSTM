@@ -5,7 +5,7 @@ import time
 from tensorflow.contrib import rnn
 
 allowed_activations = ['sigmoid', 'tanh', 'softmax', 'relu', 'linear', 'softplus']
-allowed_losses = ['rmse', 'softmax-cross-entropy', 'sparse-softmax-cross-entropy', 'sigmoid-cross-entropy']
+allowed_losses = ['rmse', 'class-distance', 'softmax-cross-entropy', 'sparse-softmax-cross-entropy', 'sigmoid-cross-entropy']
 allowed_initializers = ['uniform', 'xavier']
 allowed_optimizers = ['gradient-descent','adam']
 
@@ -44,20 +44,6 @@ def shift_padding(X, X_, max_sequence_length):
         newX_.append(tmpX_)
         sequence_length.append(length)
     return np.array(newX), np.array(newX_), np.array(sequence_length)
-'''
-def get_batches(X, X_, size): #X and X_ are tuples
-    assert size > 0, "Size should positive"
-    dim = len(X)
-    batch = []
-    batch_ = []
-    sequence_number = []
-    for i in range(dim):
-        idx = np.random.choice(len(X[i]), size, replace=False)
-        batch.append(X[i][idx])
-        batch_.append(X_[i][idx])
-        sequence_number.append(np.full(size, len(X[i][0])))
-    return batch, batch_, sequence_number
-'''
 
 def get_batches(X, X_, lengths, size): 
     assert size > 0, "Size should positive"
@@ -76,9 +62,10 @@ class Lstm:
         assert self.loss_function in allowed_losses, "Incorrect loss given."
         assert self.initialization_function in allowed_initializers, "Incorrect initializer given."
         assert self.optimization_function in allowed_optimizers, "Incorrect optimizer given."
+        assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
     def __init__(self, input_size, state_size, output_size, activation_function, loss_function, 
-                initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, batch_size=16):
+                initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, batch_size=16, cost_mask=np.array([])):
         self.input_size = input_size
         self.state_size = state_size
         self.output_size = output_size
@@ -89,6 +76,7 @@ class Lstm:
         self.epoch = epoch
         self.learning_rate = learning_rate
         self.batch_size = batch_size
+        self.cost_mask = tf.constant(cost_mask, dtype=tf.float32) if len(cost_mask) > 0 and self.output_size > 0 else tf.constant(np.ones(self.output_size), dtype=tf.float32)
         self.assertions()
         self._create_model()
 
@@ -97,19 +85,28 @@ class Lstm:
         self.y = tf.placeholder(tf.float32, [self.batch_size, None, self.output_size]) #batch - timeseries - class vector
         self.sequence_length = tf.placeholder(tf.int32, [self.batch_size]) #batch - timeseries length TODO is it ok?
         initializer = self.get_initializater(self.initialization_function)
-        activation = self.get_activation(self.activation_function) #TODO check where activation is used
+        activation = self.get_activation(self.activation_function)
         
         cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
 
         outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
-        
-        outputs = activation(outputs)
 
-        self.loss = self.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
+        single_out = activation(tf.reshape(outputs, (-1, self.output_size)))
+        single_y = tf.reshape(self.y, (-1, self.output_size))
+
+        masked_out = tf.multiply(single_out, self.cost_mask)
+        masked_y = tf.multiply(single_y, self.cost_mask)
+
+        self.loss = self.get_loss(logits=masked_out, labels=masked_y, name=self.loss_function)
         self.optimizer = self.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate, loss=self.loss)
 
-        correct_prediction = tf.equal(tf.argmax(outputs, 2), tf.argmax(self.y, 2))
+        single_out = tf.reshape(single_out, (self.batch_size, -1, self.output_size))
+        correct_prediction = tf.equal(tf.argmax(single_out, 2), tf.argmax(self.y, 2))
         self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+        #Test
+        self.testLogits = tf.reshape(single_out, (-1, self.output_size))
+        self.testLabels = tf.reshape(self.y, (-1, self.output_size))
 
         #Saver
         self.saver = tf.train.Saver()
@@ -126,11 +123,12 @@ class Lstm:
             for epoch in range(self.epoch):
                 avg_loss = 0.
                 avg_accuracy = 0.
-                #self.learning_rate = initial_learning_rate / (10 * (epoch + 1))
+                self.learning_rate = initial_learning_rate / (10 * (epoch + 1))
                 for i in range(batches_per_epoch):
-                    batches_x, batches_y, batches_length = get_batches(X, Y, lengths, self.batch_size)
+                    batches_x, batches_y, batches_length = get_sequential_batches(X, Y, lengths, i * self.batch_size, self.batch_size)
                     sess.run(self.optimizer, feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
                     loss, accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                
                     avg_loss += loss
                     avg_accuracy += accuracy
                 avg_loss /= batches_per_epoch
@@ -147,7 +145,7 @@ class Lstm:
             avg_loss = 0.
             for i in range(batches_per_epoch):
                 batches_x, batches_y, batches_length = get_sequential_batches(X, Y, lengths, i * self.batch_size, self.batch_size)  
-                loss,accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                loss, accuracy, testLogits, testLabels = sess.run([self.loss, self.accuracy, self.testLogits, self.testLabels], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})            
                 avg_loss += loss
                 avg_accuracy += accuracy
             avg_loss /= batches_per_epoch
@@ -190,9 +188,10 @@ class Lstm:
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
-lstm = Lstm(input_size=50, state_size=20, output_size=20, activation_function='softmax', loss_function='sparse-softmax-cross-entropy',
-            initialization_function='uniform', optimization_function='gradient-descent',
-            learning_rate=0.1, batch_size=200, epoch=50)
+cost_mask = np.array([1, 10, 15, 20, 27, 36, 43, 49, 63, 73, 50, 129, 161, 215, 283, 382, 432, 656, 865, 960])
+lstm = Lstm(input_size=50, state_size=20, output_size=20, activation_function='softmax', loss_function='rmse',
+            initialization_function='xavier', optimization_function='gradient-descent',
+            learning_rate=0.1, batch_size=100, epoch=30, cost_mask=cost_mask)
 
 e_values1 = np.load("../data/e_records.npy")
 e_classes1 = np.load("../data/e_classes.npy")
@@ -201,9 +200,9 @@ t_classes1 = np.load("../data/t_classes.npy")
 
 e_values, e_classes, e_lengths = shift_padding(e_values1, e_classes1, 5)
 t_values, t_classes, t_lengths = shift_padding(t_values1, t_classes1, 5)
-values = e_values #np.concatenate((e_values, t_values))
-classes = e_classes #np.concatenate((e_classes, t_classes))
-lengths = e_lengths #np.concatenate((e_lengths, t_lengths))
+values = np.concatenate((e_values, t_values))
+classes = np.concatenate((e_classes, t_classes))
+lengths = np.concatenate((e_lengths, t_lengths))
 
 idx = np.random.rand(len(values)) < 0.8
 lstm.train(values[idx], classes[idx], lengths[idx])
