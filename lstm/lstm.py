@@ -39,11 +39,12 @@ def shift_padding(X, X_, max_sequence_length): #TODO fix truncate case
         else:
             tmpX = np.array(X[index][waves_indexes])
             tmpX_ = np.array(shifted_classes[waves_indexes])
-            
-        newX.append(tmpX)
-        newX_.append(tmpX_)
-        sequence_length.append(length)
-    return np.array(newX), np.array(newX_), np.array(sequence_length) + 1
+        
+        if length > 0:
+            newX.append(tmpX)
+            newX_.append(tmpX_)
+            sequence_length.append(length)
+    return np.array(newX), np.array(newX_), np.array(sequence_length)
 
 def get_batches(X, X_, lengths, size): 
     assert size > 0, "Size should positive"
@@ -63,7 +64,7 @@ class Lstm:
         assert self.loss_function in allowed_losses, "Incorrect loss given."
         assert self.initialization_function in allowed_initializers, "Incorrect initializer given."
         assert self.optimization_function in allowed_optimizers, "Incorrect optimizer given."
-        assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
+        #assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
     def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, activation_function='tanh',
                 initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, batch_size=16, cost_mask=np.array([])):
@@ -78,7 +79,9 @@ class Lstm:
         self.epoch = epoch
         self.learning_rate = learning_rate
         self.batch_size = batch_size
-        self.cost_mask = tf.constant(cost_mask, dtype=tf.float32) if len(cost_mask) > 0 and self.output_size > 0 else tf.constant(np.ones(self.output_size), dtype=tf.float32)
+        if(not len(cost_mask) > 0 or not self.output_size > 0): #TODO handle output_size <= 0
+            cost_mask = np.ones(self.output_size)        
+        self.cost_mask = tf.reshape(tf.constant(np.tile(cost_mask, batch_size * max_sequence_length), dtype=tf.float32), (batch_size, max_sequence_length, output_size))
         self.assertions()
         self._create_model()
 
@@ -149,7 +152,7 @@ class Lstm:
                 
                 avg_loss += loss
                 avg_accuracy += accuracy
-            [print("class {0}".format(i+1), counters[i]) for i in range(len(counters))]
+            [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, counters[i][i] / np.sum(counters[i])), counters[i]) for i in range(len(counters))]
             avg_loss /= batches_per_epoch
             avg_accuracy /= batches_per_epoch
             print("Test: loss = {0:.6f}, accuracy = {1:.2f}%".format(avg_loss, avg_accuracy * 100))
@@ -179,7 +182,7 @@ class Lstm:
             return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
         elif name == 'weighted-sparse-softmax-cross-entropy':
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, 2))
-            cross_entropy = tf.multiply(cross_entropy, tf.cast(tf.argmax(labels, 2), dtype=tf.float32))
+            cross_entropy = tf.multiply(cross_entropy, tf.reduce_sum(tf.multiply(self.cost_mask, labels), 2))
             cross_entropy = tf.reduce_sum(cross_entropy, reduction_indices=1)
             cross_entropy = tf.divide(cross_entropy, tf.cast(lengths, dtype=tf.float32))
             return tf.reduce_mean(cross_entropy)
@@ -196,7 +199,8 @@ class Lstm:
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
-#cost_mask = np.array([1., 8., 15., 23., 34., 36., 92., 162., 260., 455.]) #/ 1086
+#cost_mask = np.array([1., 8., 15., 23., 34., 36., 92., 162., 260., 455.]) / 10 #/ 1086
+cost_mask = np.array([1., 8., 15., 23., 34., 36., 92., 92., 92., 92.]) / 10 #/ 1086
 
 #Loading
 e_values1 = np.load("../data/e_records.npy")
@@ -222,7 +226,7 @@ lengths = np.concatenate((e_lengths, t_lengths))
 #LSTM definition
 lstm = Lstm(max_sequence_length=max_length, input_size=len(values[0][0]), state_size=50, output_size=len(classes[0][0]), 
             loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.1, batch_size=32, epoch=10)
+            optimization_function='gradient-descent', learning_rate=0.1, batch_size=32, epoch=10, cost_mask=cost_mask)
 
 #Training + testing
 lstm.train(values, classes, lengths)
