@@ -1,50 +1,12 @@
-from __future__ import print_function
 import numpy as np
 import tensorflow as tf
-import time
+from utils import Utils as utils
 from tensorflow.contrib import rnn
 
 allowed_activations = ['sigmoid', 'tanh', 'softmax', 'relu', 'linear', 'softplus']
 allowed_losses = ['rmse', 'softmax-cross-entropy', 'sparse-softmax-cross-entropy', 'weighted-sparse-softmax-cross-entropy', 'sigmoid-cross-entropy']
 allowed_initializers = ['uniform', 'xavier']
 allowed_optimizers = ['gradient-descent','adam']
-
-def shift_padding(X, X_, max_sequence_length): #TODO fix truncate case
-    assert len(X) > 0, "Dataset should have at least one timeseries"
-    assert len(X) == len(X_), "Input and classes should have the same length"
-    assert max_sequence_length > 0, "Max sequence length should be positive" 
-    dim = len(X)
-    input_size = len(X[0][0])
-    class_size = len(X_[0][0])
-    newX = []
-    newX_ = []
-    sequence_length = []
-
-    for index in range(len(X_)):
-        start = 0
-        end = 0
-
-        if(np.max(X_[index]) > 0): #at least 1 valid class
-            start = np.where(np.array([np.max(wave) for wave in X_[index]]) > 0)[0][0]
-            end = np.where(np.array([np.max(wave) for wave in X_[index]]) > 0)[0][-1:][0]
-        if(end > max_sequence_length):
-            end = max_sequence_length
-        length = end - start
-
-        shifted_classes = np.concatenate((X_[index][1:], [np.zeros(class_size)]))
-        waves_indexes = np.arange(start, end)
-        if(length < max_sequence_length):
-            tmpX = np.concatenate((X[index][waves_indexes], [np.zeros(input_size) for i in range(length, max_sequence_length)]))
-            tmpX_ = np.concatenate((shifted_classes[waves_indexes], [np.zeros(class_size) for i in range(length, max_sequence_length)]))
-        else:
-            tmpX = np.array(X[index][waves_indexes])
-            tmpX_ = np.array(shifted_classes[waves_indexes])
-        
-        if length > 0:
-            newX.append(tmpX)
-            newX_.append(tmpX_)
-            sequence_length.append(length)
-    return np.array(newX), np.array(newX_), np.array(sequence_length)
 
 def get_batches(X, X_, lengths, size): 
     assert size > 0, "Size should positive"
@@ -198,36 +160,3 @@ class Lstm:
             return tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(loss)
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
-
-#cost_mask = np.array([1., 8., 15., 23., 34., 36., 92., 162., 260., 455.]) / 10 #/ 1086
-cost_mask = np.array([1., 8., 15., 23., 34., 36., 92., 92., 92., 92.]) / 10 #/ 1086
-
-#Loading
-e_values1 = np.load("../data/e_records.npy")
-e_classes1 = np.load("../data/e_classes.npy")
-t_values1= np.load("../data/t_records.npy")
-t_classes1 = np.load("../data/t_classes.npy")
-
-max_length = 5
-
-#Add classes to training inputs
-e_values1 = np.concatenate((e_values1, e_classes1), axis=2)
-t_values1 = np.concatenate((t_values1, t_classes1), axis=2)
-
-#Shift+pad
-e_values, e_classes, e_lengths = shift_padding(e_values1, e_classes1, max_length)
-t_values, t_classes, t_lengths = shift_padding(t_values1, t_classes1, max_length)
-
-#Concatenate datasets
-values = np.concatenate((e_values, t_values))
-classes = np.concatenate((e_classes, t_classes))
-lengths = np.concatenate((e_lengths, t_lengths))
-
-#LSTM definition
-lstm = Lstm(max_sequence_length=max_length, input_size=len(values[0][0]), state_size=50, output_size=len(classes[0][0]), 
-            loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.1, batch_size=32, epoch=10, cost_mask=cost_mask)
-
-#Training + testing
-lstm.train(values, classes, lengths)
-lstm.test(values, classes, lengths)

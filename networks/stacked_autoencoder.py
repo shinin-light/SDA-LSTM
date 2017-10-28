@@ -1,11 +1,10 @@
-import numpy as np
-import deepautoencoder.utils as utils
 import tensorflow as tf
+import numpy as np
+from utils import Utils as utils
 
 allowed_activations = ['sigmoid', 'tanh', 'softmax', 'relu', 'linear', 'softplus']
 allowed_noises = ['none', 'gaussian', 'mask']
 allowed_losses = ['rmse', 'cross-entropy']
-
 
 class StackedAutoEncoder:
     """A deep autoencoder with denoising capability"""
