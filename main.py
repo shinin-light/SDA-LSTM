@@ -40,12 +40,14 @@ input_size = len(lstm_values[0][0])
 output_size = len(lstm_classes[0][0])
 lstm = Lstm(max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, output_size=output_size, 
             loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=10, cost_mask=cost_mask)
+            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=1, cost_mask=cost_mask)
 
-print("Training LSTM...")
+
 lstm_train, lstm_test = utils.generate_rnn_train_test(lstm_values, lstm_classes, lstm_lengths, training_frac)
-print("Error on training set:")
+print("Training LSTM...")
 lstm.train(lstm_train[0], lstm_train[1], lstm_train[2])
+print("Error on training set:")
+lstm.test(lstm_train[0], lstm_train[1], lstm_train[2])
 print("Error on test set:")
 lstm.test(lstm_test[0], lstm_test[1], lstm_test[2])
 
@@ -60,17 +62,17 @@ if(apply_reduction):
 
 sdae_values = np.concatenate((sdae_e_values, sdae_t_values))
 
+'''
 sdae = StackedAutoEncoder(dims=[25], activations=['relu'], decoding_activations=['sigmoid'], noise=['mask-0.7'],
                         epoch=[3000], loss=['cross-entropy'], lr=0.05, batch_size=100, print_step=200)
 '''
 sdae = StackedAutoEncoder(dims=[50, 50, 25], activations=['tanh', 'tanh', 'relu'], decoding_activations=['sigmoid', 'sigmoid', 'sigmoid'], 
                         noise=['mask-0.7','gaussian','gaussian'], epoch=[3000, 3000, 3000], loss=['cross-entropy','rmse','rmse'], lr=0.01, 
                         batch_size=100, print_step=200)
-'''
 
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
 print("Training SDAE...")
-sdae.fit(sdae_values)
+sdae.train(sdae_values)
 print("Finetuning SDAE...")
 sdae.finetune(sdae_train)
 #model.test(test_X, 10, threshold=0.1)
@@ -96,7 +98,7 @@ classifier = ForwardClassifier(dims=[80,20], activations=['relu','relu'], output
                             batch_size=100, print_step=200)
 classifier_train, classifier_test = utils.generate_classifier_train_test(classifier_values, classifier_classes, training_frac)
 print("Training Classifier...")
-classifier.fit(classifier_train[0], classifier_train[1])
+classifier.train(classifier_train[0], classifier_train[1])
 print("Error on training set:")
 classifier.test(classifier_train[0], classifier_train[1])
 print("Error on test set:")
@@ -124,7 +126,7 @@ sdae_classifier = ForwardClassifier(dims=[80,20], activations=['relu','relu'], o
 
 sdae_classifier_train, sdae_classifier_test = utils.generate_classifier_train_test(sdae_classifier_values, sdae_classifier_classes, training_frac)
 print("Training SDAE Classifier...")
-sdae_classifier.fit(sdae_classifier_train[0], sdae_classifier_train[1])
+sdae_classifier.train(sdae_classifier_train[0], sdae_classifier_train[1])
 print("Error on training set:")
 sdae_classifier.test(sdae_classifier_train[0], sdae_classifier_train[1])
 print("Error on test set:")

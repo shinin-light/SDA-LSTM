@@ -1,6 +1,57 @@
 import numpy as np
+import tensorflow as tf
 
 class Utils:
+
+    def get_activation(name):
+        if name == 'sigmoid':
+            return tf.nn.sigmoid
+        elif name == 'softmax':
+            return tf.nn.softmax
+        elif name == 'softplus':
+            return tf.nn.softplus
+        elif name == 'linear':
+            return linear
+        elif name == 'tanh':
+            return tf.nn.tanh
+        elif name == 'relu':
+            return tf.nn.relu
+        raise BaseException("Invalid activation function.")
+
+    def get_loss(logits, labels, name, lengths=None, cost_mask=None):
+        if name == 'rmse':
+            return tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(labels, logits))))
+        elif name == 'softmax-cross-entropy':
+            return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
+        elif name == 'sparse-softmax-cross-entropy':
+            index = len(labels.shape) - 1
+            return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, index)))
+        elif name == 'sigmoid-cross-entropy':
+            return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
+        elif name == 'weighted-sparse-softmax-cross-entropy':
+            assert lengths != None, "Specify lengths array."
+            assert cost_mask != None, "Specify cost mask array."
+            index = len(labels.shape) - 1
+            cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, index))
+            cross_entropy = tf.multiply(cross_entropy, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
+            cross_entropy = tf.reduce_sum(cross_entropy, reduction_indices=1)
+            cross_entropy = tf.divide(cross_entropy, tf.cast(lengths, dtype=tf.float32))
+            return tf.reduce_mean(cross_entropy)
+        raise BaseException("Invalid loss function.")
+
+    def get_initializater(name):
+        if name == 'uniform':
+            return tf.random_uniform_initializer(-1, 1)
+        elif name == 'xavier':
+            return tf.contrib.layers.xavier_initializer()
+        raise BaseException("Invalid initializer.")
+
+    def get_optimizer(name, learning_rate):
+        if name == 'gradient-descent':
+            return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        elif name == 'adam':
+            return tf.train.AdamOptimizer(learning_rate=learning_rate)
+        raise BaseException("Invalid optimizer.")
 
     def homogenize(X, Y, ratio_threshold=1): #TODO: add also class0 records?
         assert ratio_threshold > 0 and ratio_threshold <= 1, "Invalid ratio threshold."
@@ -22,9 +73,25 @@ class Utils:
 
         return np.array(newX, dtype=np.float32), np.array(newY, dtype=np.float32)
 
-    def get_batch(X, X_, size):
-        a = np.random.choice(len(X), size, replace=False)
-        return X[a], X_[a]
+    def get_batch(X, X_, size): 
+        assert size > 0, "Size should positive"
+        idx = np.random.choice(len(X), size, replace=False)
+        return X[idx], X_[idx]
+    
+    def get_sequential_batch(X, X_, start, size):
+        assert size > 0, "Size should positive"
+        assert start >= 0, "Start should not be negative"   
+        return X[start:start+size], X_[start:start+size]
+
+    def get_rnn_batch(X, X_, lengths, size): 
+        assert size > 0, "Size should positive"
+        idx = np.random.choice(len(X), size, replace=False)
+        return X[idx], X_[idx], lengths[idx]
+
+    def get_rnn_sequential_batch(X, X_, lengths, start, size):
+        assert size > 0, "Size should positive"
+        assert start >= 0, "Start should not be negative"   
+        return X[start:start+size], X_[start:start+size], lengths[start:start+size]
     
     def generate_sdae_train_test(X, training_fraction):
         indexes = np.random.rand(X.shape[0]) < training_fraction
