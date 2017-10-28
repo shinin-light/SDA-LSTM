@@ -67,7 +67,7 @@ sdae = StackedAutoEncoder(dims=[25], activations=['relu'], decoding_activations=
                         epoch=[3000], loss=['cross-entropy'], lr=0.05, batch_size=100, print_step=200)
 '''
 sdae = StackedAutoEncoder(dims=[50, 50, 25], activations=['tanh', 'tanh', 'relu'], decoding_activations=['sigmoid', 'sigmoid', 'sigmoid'], 
-                        noise=['mask-0.7','gaussian','gaussian'], epoch=[3000, 3000, 3000], loss=['cross-entropy','rmse','rmse'], lr=0.01, 
+                        noise=['mask-0.7','gaussian','gaussian'], epoch=[100, 100, 100], loss=['cross-entropy','rmse','rmse'], lr=0.01, 
                         batch_size=100, print_step=200)
 
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
@@ -94,8 +94,9 @@ if(apply_reduction):
 classifier_values = np.concatenate((classifier_e_values, classifier_t_values))
 classifier_classes = np.concatenate((classifier_e_classes, classifier_t_classes))
 
-classifier = ForwardClassifier(dims=[80,20], activations=['relu','relu'], output_activation='softmax', epoch=5000, loss='rmse', lr=0.007, 
-                            batch_size=100, print_step=200)
+classifier = ForwardClassifier(input_size=attributes_num, output_size=classes_num, dims=[80,20], activation_functions=['relu','relu'], 
+                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=1000,
+                            learning_rate=0.007, batch_size=100, print_step=200)
 classifier_train, classifier_test = utils.generate_classifier_train_test(classifier_values, classifier_classes, training_frac)
 print("Training Classifier...")
 classifier.train(classifier_train[0], classifier_train[1])
@@ -121,8 +122,9 @@ if(apply_reduction):
 sdae_classifier_values = np.concatenate((sdae_e_values, sdae_t_values))
 sdae_classifier_classes = np.concatenate((sdae_classifier_e_classes, sdae_classifier_t_classes))
 
-sdae_classifier = ForwardClassifier(dims=[80,20], activations=['relu','relu'], output_activation='softmax', epoch=5000, loss='rmse', lr=0.007,
-                                batch_size=100, print_step=200)
+sdae_classifier = ForwardClassifier(input_size=attributes_num, output_size=classes_num, dims=[80,20], activation_functions=['relu','relu'], 
+                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=1000,
+                            learning_rate=0.007, batch_size=100, print_step=200)
 
 sdae_classifier_train, sdae_classifier_test = utils.generate_classifier_train_test(sdae_classifier_values, sdae_classifier_classes, training_frac)
 print("Training SDAE Classifier...")

@@ -1,137 +1,87 @@
 import numpy as np
 import tensorflow as tf
-
-allowed_activations = ['sigmoid', 'tanh', 'softmax', 'relu', 'linear', 'softplus']
-allowed_losses = ['rmse', 'sigmoid-cross-entropy', 'softmax-cross-entropy']
-
+from utils import Utils as utils
 
 class ForwardClassifier:
-    """A deep autoencoder with denoising capability"""
 
     def assertions(self):
-        global allowed_activations, allowed_noises, allowed_losses
-        assert 'list' in str(
-            type(self.dims)), 'dims must be a list even if there is one layer.'
-        assert len(self.activations) == len(
-            self.dims), "No. of activations must equal to no. of hidden layers"
-        assert self.epoch > 0, "No. of epoch must be atleast 1"
-        assert set(self.activations + allowed_activations) == set(
-            allowed_activations), "Incorrect activation given."
-        assert self.output_activation in allowed_activations, "Incorrect output activation given."
-        assert self.loss in allowed_losses, "Incorrect loss given."
+        assert 'list' in str(type(self.dims)), 'dims must be a list even if there is one layer.'
+        assert len(self.activation_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
+        assert self.epoch > 0, "No. of epoch must be at least 1"
 
-    def __init__(self, dims, activations, output_activation, loss, epoch=1000,
-                 lr=0.001, batch_size=100, print_step=50):
+    def __init__(self, input_size, output_size, dims, activation_functions, output_activation_function, loss_function, optimization_function='gradient-descent', epoch=1000,
+                 learning_rate=0.001, batch_size=100, print_step=50):
+        self.input_size = input_size
+        self.output_size = output_size
         self.print_step = print_step
         self.batch_size = batch_size
-        self.lr = lr
-        self.loss = loss
-        self.activations = activations
-        self.output_activation = output_activation
+        self.learning_rate = learning_rate
+        self.loss_function = loss_function
+        self.optimization_function = optimization_function
+        self.output_activation_function = output_activation_function
+        self.activation_functions = activation_functions
         self.epoch = epoch
         self.dims = dims
         self.assertions()
-        self.activations.append(self.output_activation)
+        self.activation_functions.append(self.output_activation_function)
         self.depth = len(dims)
         self.weights, self.biases = [], []
+        self._create_model()
 
-    def fit(self, data_x, data_y):
-        tf.reset_default_graph()
-        input_dim = len(data_x[0])
-        output_dim = len(data_y[0])
+    def _create_model(self):
+        self.x = tf.placeholder(dtype=tf.float32, shape=[None, self.input_size], name='x')
+        self.y = tf.placeholder(dtype=tf.float32, shape=[None, self.output_size], name='y')
+        
         if(self.depth > 0):
-            hidden_dim = self.dims[0]
+            hidden_size = self.dims[0]
         else:
-            hidden_dim = output_dim
+            hidden_size = output_size
+        previous_size = self.input_size
 
-        sess = tf.Session()
-
-        x = tf.placeholder(dtype=tf.float32, shape=[None, input_dim], name='x')
-        y = tf.placeholder(dtype=tf.float32, shape=[None, output_dim], name='y')
-
-        weights, biases = [],[]
+        self.weights, self.biases = [],[]
 
         for i in range(self.depth + 1):
-            weights.append(tf.Variable(tf.truncated_normal([input_dim, hidden_dim], dtype=tf.float32)))
-            biases.append(tf.Variable(tf.truncated_normal([hidden_dim],dtype=tf.float32)))
+            self.weights.append(tf.Variable(tf.truncated_normal([previous_size, hidden_size], dtype=tf.float32)))
+            self.biases.append(tf.Variable(tf.truncated_normal([hidden_size],dtype=tf.float32)))
 
-            input_dim = hidden_dim
+            previous_size = hidden_size
             if(i < self.depth - 1):
-                hidden_dim = self.dims[i+1]
+                hidden_size = self.dims[i+1]
             else:
-                hidden_dim = output_dim
+                hidden_size = self.output_size
 
-        status = x
-        #Forward
+        outputs = self.x
         for i in range(self.depth + 1):
-            status = self.activate(tf.matmul(status, weights[i]) + biases[i], self.activations[i])
-        #status.append(self.activate(tf.matmul(status[self.depth-1], weights[self.depth]) + biases[self.depth], self.output_activation))
+            activation = utils.get_activation(self.activation_functions[i])
+            outputs = activation(tf.matmul(outputs, self.weights[i]) + self.biases[i])
+        
+        self.output = outputs
 
-        # reconstruction loss
-        if self.loss == 'rmse':
-            loss = tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(y, status))))
-        elif self.loss == 'softmax-cross-entropy':
-            loss = tf.reduce_mean(
-                tf.nn.softmax_cross_entropy_with_logits(logits=status, labels=y))
-        elif self.loss == 'sigmoid-cross-entropy':
-            loss = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(logits=status, labels=y))
-        train_op = tf.train.AdamOptimizer(self.lr).minimize(loss) #TODO: Use also AdamOptimizer, GradientDescentOptimizer
+        self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
+        self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
 
-        sess.run(tf.global_variables_initializer())#initialize_all_variables())
-        for i in range(self.epoch):
-            b_x, b_y = self.get_batch(data_x, data_y, self.batch_size)
-            sess.run(train_op, feed_dict={x: b_x, y: b_y})
-            if (i + 1) % self.print_step == 0:
-                l = sess.run(loss, feed_dict={x: data_x, y: data_y})
-                print('epoch {0}: global loss = {1}'.format(i, l))
+        correct_prediction = tf.equal(tf.argmax(self.output, 1), tf.argmax(self.y, 1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-        for i in range(self.depth + 1):
-            self.weights.append(sess.run(weights[i]))
-            self.biases.append(sess.run(biases[i]))
+        #Saver
+        self.saver = tf.train.Saver()
 
-    def transform(self, data_x):
-        tf.reset_default_graph()
-        sess = tf.Session()
-        x = tf.constant(data_x, dtype=tf.float32)
-        for w, b, a in zip(self.weights, self.biases, self.activations):
-            weight = tf.constant(w, dtype=tf.float32)
-            bias = tf.constant(b, dtype=tf.float32)
-            layer = tf.matmul(x, weight) + bias
-            x = self.activate(layer, a)
+        #Tensorboard
+        #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
 
-        return x.eval(session=sess)
+    def train(self, X, Y):
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            for i in range(self.epoch):
+                batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
+                sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y})
+                if (i + 1) % self.print_step == 0:
+                    l = sess.run(self.loss, feed_dict={self.x: X, self.y: Y})
+                    print('epoch {0}: global loss = {1}'.format(i, l))
+            self.saver.save(sess, './weights/classifier/checkpoint',0)
 
-    def test(self, data_x, data_y, samples_shown=1):
-        data_y_ = self.transform(data_x)
-        errors = 0.0
-        total = 0.0
-        for y_, y in zip(data_y_, data_y):
-            real_class = np.argmax(y)
-            predicted_class = np.argmax(y_)
-            if(real_class != predicted_class):
-                errors += 1
-            total += 1
-        print('Accuracy: {0:.2f}% (Errors: {1:.0f}, Total: {2:.0f})'.format((1-errors/total)*100, errors, total))
-
-    def fit_transform(self, data_x, data_y):
-        self.fit(data_x, data_y)
-        return self.transform(data_x)
-
-    def activate(self, linear, name):
-        if name == 'sigmoid':
-            return tf.nn.sigmoid(linear, name='encoded')
-        elif name == 'softmax':
-            return tf.nn.softmax(linear, name='encoded')
-        elif name == 'softplus':
-            return tf.nn.softplus(linear, name='encoded')
-        elif name == 'linear':
-            return linear
-        elif name == 'tanh':
-            return tf.nn.tanh(linear, name='encoded')
-        elif name == 'relu':
-            return tf.nn.relu(linear, name='encoded')
-
-    def get_batch(self, X, Y, size):
-        a = np.random.choice(len(X), size, replace=False)
-        return X[a], Y[a]
+    def test(self, X, Y, samples_shown=1):
+        with tf.Session() as sess:
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/classifier'))
+            avg_loss, avg_accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: X, self.y: Y})
+            print("Test: loss = {0:.6f}, accuracy = {1:.2f}%".format(avg_loss, avg_accuracy * 100))
