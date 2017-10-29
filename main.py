@@ -18,7 +18,7 @@ classes_num = len(e_classes[0][0])
 
 #---------------------LSTM-----------------------
 print("---------------------LSTM-----------------------")
-'''
+
 lstm_e_values = np.concatenate((e_values, e_classes), axis=2)
 lstm_t_values = np.concatenate((t_values, t_classes), axis=2)
 
@@ -41,7 +41,7 @@ input_size = len(lstm_values[0][0])
 output_size = len(lstm_classes[0][0])
 lstm = Lstm(max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, output_size=output_size, 
             loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=1, cost_mask=cost_mask)
+            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=10, cost_mask=cost_mask)
 
 
 lstm_train, lstm_test = utils.generate_rnn_train_test(lstm_values, lstm_classes, lstm_lengths, training_frac)
@@ -51,7 +51,7 @@ print("Error on training set:")
 lstm.test(lstm_train[0], lstm_train[1], lstm_train[2])
 print("Error on test set:")
 lstm.test(lstm_test[0], lstm_test[1], lstm_test[2])
-'''
+
 #---------------------SDAE-----------------------
 print("---------------------SDAE-----------------------")
 sdae_e_values = np.reshape(e_values,(-1,attributes_num))
@@ -68,8 +68,8 @@ sdae = StackedAutoEncoder(dims=[25], activations=['relu'], decoding_activations=
                         epoch=[3000], loss=['cross-entropy'], lr=0.05, batch_size=100, print_step=200)
 '''
 sdae = StackedAutoEncoder(input_size=attributes_num, output_size=classes_num, dims=[50, 50, 25], encoding_functions=['tanh', 'tanh', 'relu'], 
-                        decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epoch=[1000, 1000, 1000], 
-                        loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=100, print_step=200)
+                        decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epoch=[3000, 3000, 3000], 
+                        loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=100, print_step=1000)
 
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
 print("Training SDAE...")
@@ -96,8 +96,8 @@ classifier_values = np.concatenate((classifier_e_values, classifier_t_values))
 classifier_classes = np.concatenate((classifier_e_classes, classifier_t_classes))
 
 classifier = ForwardClassifier(input_size=attributes_num, output_size=classes_num, dims=[80,20], activation_functions=['relu','relu'], 
-                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=1000,
-                            learning_rate=0.007, batch_size=100, print_step=200)
+                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=10000,
+                            learning_rate=0.007, batch_size=100, print_step=2000)
 classifier_train, classifier_test = utils.generate_classifier_train_test(classifier_values, classifier_classes, training_frac)
 print("Training Classifier...")
 classifier.train(classifier_train[0], classifier_train[1])
@@ -124,8 +124,8 @@ sdae_classifier_values = np.concatenate((sdae_e_values, sdae_t_values))
 sdae_classifier_classes = np.concatenate((sdae_classifier_e_classes, sdae_classifier_t_classes))
 
 sdae_classifier = ForwardClassifier(input_size=attributes_num, output_size=classes_num, dims=[80,20], activation_functions=['relu','relu'], 
-                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=1000,
-                            learning_rate=0.007, batch_size=100, print_step=200)
+                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=10000,
+                            learning_rate=0.007, batch_size=100, print_step=2000)
 
 sdae_classifier_train, sdae_classifier_test = utils.generate_classifier_train_test(sdae_classifier_values, sdae_classifier_classes, training_frac)
 print("Training SDAE Classifier...")
