@@ -14,11 +14,12 @@ class StackedAutoEncoder:
         assert all(True if x > 0 else False for x in self.epoch), "No. of epoch must be at least 1"
 
     def __init__(self, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epoch=1000,
-                 learning_rate=0.001, batch_size=100, print_step=50):
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
         self.input_size = input_size
-        self.print_step = print_step
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.learning_rate_decay = learning_rate_decay
+        self.initial_learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.learning_rate, 0)
         self.loss_functions = loss_functions
         self.optimization_function = optimization_function
         self.encoding_functions = encoding_functions
@@ -27,85 +28,89 @@ class StackedAutoEncoder:
         self.epoch = epoch
         self.dims = dims
         self.depth = len(dims)
+        self.scope_name = scope_name
         self.weights, self.biases, self.decoding_biases = [], [], []
         self.assertions()
         self._create_model()
         
     def _create_model(self):
-        self.x = []
-        for i in range(self.depth):
-            if(i == 0):
-                self.x.append(tf.placeholder(tf.float32, [None, self.input_size]))
-            else:
-                self.x.append(tf.placeholder(tf.float32, [None, self.dims[i - 1]]))
-        
-        self.weights, self.biases = [], []
-        self.layerwise_encoded = []
-        self.layerwise_decoded = []
-        self.encoded = []
-        self.decoded = []
-
-        previous_size = self.input_size
-        for i in range(self.depth):
-            hidden_size = self.dims[i]
-
-            encoding_weights = tf.Variable(tf.truncated_normal([previous_size, hidden_size], dtype=tf.float32))
-            encoding_biases = tf.Variable(tf.truncated_normal([hidden_size], dtype=tf.float32))
-            encoding_function = utils.get_activation(self.encoding_functions[i])
-
-            self.weights.append(encoding_weights)
-            self.biases.append(encoding_biases)
+        with tf.variable_scope(self.scope_name) as scope:
+            self.x = []
+            for i in range(self.depth):
+                if(i == 0):
+                    self.x.append(tf.placeholder(tf.float32, [None, self.input_size]))
+                else:
+                    self.x.append(tf.placeholder(tf.float32, [None, self.dims[i - 1]]))
             
-            if(len(self.encoded) == 0):
-                self.encoded.append(encoding_function(tf.matmul(self.x[0], encoding_weights) + encoding_biases))
-            else:
-                self.encoded.append(encoding_function(tf.matmul(self.encoded[len(self.encoded) - 1], encoding_weights) + encoding_biases))
+            self.weights, self.biases = [], [] #ENC1, ENC2, ENC3, DEC3, DEC2, DEC1
+            self.layerwise_encoded = [] #ENC1(X), ENC2(X), ENC3(X)
+            self.layerwise_decoded = [] #DEC1(ENC1(X)), DEC2(ENC2(X)), DEC3(ENC3(X))
+            self.encoded = [] #ENC1(X), ENC2(ENC1(X)), ENC3(ENC2(ENC1(X))) => ENCODED
+            self.decoded = [] #DEC3(ENCODED), DEC2(DEC3(ENCODED)), DEC1(DEC2(DEC3(ENCODED)))
 
-            self.layerwise_encoded.append(encoding_function(tf.matmul(self.x[i], encoding_weights) + encoding_biases))
+            previous_size = self.input_size
+            for i in range(self.depth):
+                hidden_size = self.dims[i]
 
-            previous_size = hidden_size
+                encoding_weights = tf.Variable(tf.truncated_normal([previous_size, hidden_size], dtype=tf.float32))
+                encoding_biases = tf.Variable(tf.truncated_normal([hidden_size], dtype=tf.float32))
+                encoding_function = utils.get_activation(self.encoding_functions[i])
 
-        previous_size = self.dims[self.depth - 1]
-        for i in range(self.depth - 1, -1, -1):
-            hidden_size = self.dims[i - 1] if i > 0 else self.input_size
+                self.weights.append(encoding_weights)
+                self.biases.append(encoding_biases)
+                
+                if(len(self.encoded) == 0):
+                    self.encoded.append(encoding_function(tf.matmul(self.x[0], encoding_weights) + encoding_biases))
+                else:
+                    self.encoded.append(encoding_function(tf.matmul(self.encoded[len(self.encoded) - 1], encoding_weights) + encoding_biases))
 
-            decoding_weights = tf.transpose(self.weights[i])
-            decoding_biases = tf.Variable(tf.truncated_normal([hidden_size], dtype=tf.float32))
-            decoding_function = utils.get_activation(self.decoding_functions[i])
+                self.layerwise_encoded.append(encoding_function(tf.matmul(self.x[i], encoding_weights) + encoding_biases))
 
-            self.weights.append(decoding_weights)
-            self.biases.append(decoding_biases)
+                previous_size = hidden_size
 
-            if(len(self.decoded) == 0):
-                self.decoded.append(decoding_function(tf.matmul(self.encoded[self.depth - 1], decoding_weights) + decoding_biases))
-            else:
-                self.decoded.append(decoding_function(tf.matmul(self.decoded[len(self.decoded) - 1], decoding_weights) + decoding_biases))
+            previous_size = self.dims[self.depth - 1]
+            for i in range(self.depth - 1, -1, -1):
+                hidden_size = self.dims[i - 1] if i > 0 else self.input_size
 
-            self.layerwise_decoded.append(decoding_function(tf.matmul(self.layerwise_encoded[i], decoding_weights) + decoding_biases))
+                decoding_weights = tf.transpose(self.weights[i])
+                decoding_biases = tf.Variable(tf.truncated_normal([hidden_size], dtype=tf.float32))
+                decoding_function = utils.get_activation(self.decoding_functions[i])
 
-            previous_size = hidden_size
+                self.weights.append(decoding_weights)
+                self.biases.append(decoding_biases)
 
-        self.encoded_data = self.encoded[self.depth - 1]
-        self.decoded_data = self.decoded[self.depth - 1]
+                if(len(self.decoded) == 0):
+                    self.decoded.append(decoding_function(tf.matmul(self.encoded[self.depth - 1], decoding_weights) + decoding_biases))
+                else:
+                    self.decoded.append(decoding_function(tf.matmul(self.decoded[len(self.decoded) - 1], decoding_weights) + decoding_biases))
 
-        self.layerwise_losses = []
-        self.layerwise_optimizers = []
-        for i in range(self.depth):
-            loss = utils.get_loss(logits=self.layerwise_decoded[self.depth -1 - i], labels=self.x[i], name=self.loss_functions[i])
-            optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(loss)
-            self.layerwise_losses.append(loss)
-            self.layerwise_optimizers.append(optimizer)
+                self.layerwise_decoded.append(decoding_function(tf.matmul(self.layerwise_encoded[i], decoding_weights) + decoding_biases))
 
-        self.finetuning_loss = utils.get_loss(logits=self.x[0], labels=self.decoded_data, name=self.loss_functions[0])
-        self.finetuning_optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.finetuning_loss)
+                previous_size = hidden_size
 
-        #Saver
-        self.saver = tf.train.Saver()
-        
-        #Tensorboard
-        #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
+            self.encoded_data = self.encoded[self.depth - 1]
+            self.decoded_data = self.decoded[self.depth - 1]
+
+            self.layerwise_losses = []
+            self.layerwise_optimizers = []
+            for i in range(self.depth):
+                loss = utils.get_loss(logits=self.layerwise_decoded[self.depth - 1 - i], labels=self.x[i], name=self.loss_functions[i])
+                optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(loss)
+                self.layerwise_losses.append(loss)
+                self.layerwise_optimizers.append(optimizer)
+
+            self.finetuning_loss = utils.get_loss(labels=self.decoded_data, logits=self.x[0], name=self.loss_functions[0])
+            self.finetuning_optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.finetuning_loss)
+
+            #Saver
+            self.saver = tf.train.Saver()
+            
+            #Tensorboard
+            #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
 
     def train(self, X):
+        batches_per_epoch = int(len(X) / self.batch_size)
+
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for layer in range(self.depth):
@@ -113,38 +118,47 @@ class StackedAutoEncoder:
                 tmp = np.copy(X)
                 tmp = self._add_noise(tmp, layer)
                 X = tmp
-                for i in range(self.epoch[layer]):
-                    batch_x, batch_y = utils.get_batch(X, X, self.batch_size)
-                    sess.run(self.layerwise_optimizers[layer], feed_dict={self.x[layer]: batch_x})
-                    if (i + 1) % self.print_step == 0:
-                        loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: X})
-                        print('epoch {0}: global loss = {1}'.format(i, loss))
+                for epoch in range(self.epoch[layer]):
+                    avg_loss = 0.
+                    self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
+                    for i in range(batches_per_epoch):
+                        batch_x, batch_y = utils.get_batch(X, X, self.batch_size)
+                        sess.run(self.layerwise_optimizers[layer], feed_dict={self.x[layer]: batch_x})
+                        loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: batch_x})
+                        avg_loss += loss
+                    avg_loss /= batches_per_epoch
+                    print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
                 X = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X})
-            self.saver.save(sess, './weights/sdae/checkpoint',0)
+            self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
     def finetune(self, X):
         print('Fine Tuning')
-        tmp = np.copy(X)
-        tmp = self._add_noise(tmp, 0)
-        X = tmp
+        batches_per_epoch = int(len(X) / self.batch_size)
         with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae'))
-            for i in range(self.epoch[0]):
-                batch_x, batch_y = utils.get_batch(X, X, self.batch_size)
-                sess.run(self.finetuning_optimizer, feed_dict={self.x[0]: batch_x})
-                if (i + 1) % self.print_step == 0:
-                    loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: X})
-                    print('epoch {0}: global loss = {1}'.format(i, loss))
-            self.saver.save(sess, './weights/sdae/checkpoint',0)
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
+            tmp = np.copy(X)
+            tmp = self._add_noise(tmp, 0)
+            X = tmp
+            for epoch in range(self.epoch[0]):
+                avg_loss = 0.
+                self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
+                for i in range(batches_per_epoch):
+                    batch_x, batch_y = utils.get_batch(X, X, self.batch_size)
+                    sess.run(self.finetuning_optimizer, feed_dict={self.x[0]: batch_x})
+                    loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: batch_x})
+                    avg_loss += loss
+                avg_loss /= batches_per_epoch
+                print('epoch {0}: loss = {1:.6f}'.format(epoch, avg_loss))
+            self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
     def encode(self, data):
         with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae'))
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
             return sess.run(self.encoded_data, feed_dict={self.x[0]: data})
 
     def timeseries_encode(self, data):
         with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae'))
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
             result = []
             for sequence in data:
                 encoded_sequence = sess.run(self.encoded_data, feed_dict={self.x[0]: sequence})
@@ -153,7 +167,7 @@ class StackedAutoEncoder:
 
     def test(self, data, samples_shown=1, threshold=0.0):
         with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae'))
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
             avg_loss, decoded_data = sess.run([self.finetuning_loss, self.decoded_data], feed_dict={self.x[0]: data})
             for i in np.random.choice(len(data), samples_shown):
                 print('Sample {0}'.format(i))

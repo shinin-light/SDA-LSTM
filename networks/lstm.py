@@ -10,7 +10,8 @@ class Lstm:
         #assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
     def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, activation_function='tanh',
-                initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, batch_size=16, cost_mask=np.array([])):
+                initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, 
+                learning_rate_decay='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
         self.max_sequence_length = max_sequence_length
         self.input_size = input_size
         self.state_size = state_size
@@ -21,7 +22,10 @@ class Lstm:
         self.optimization_function = optimization_function
         self.epoch = epoch
         self.learning_rate = learning_rate
+        self.learning_rate_decay = learning_rate_decay
+        self.initial_learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.learning_rate, 0)
         self.batch_size = batch_size
+        self.scope_name = scope_name
         if(not len(cost_mask) > 0 or not self.output_size > 0): #TODO handle output_size <= 0
             cost_mask = np.ones(self.output_size)        
         self.cost_mask = tf.reshape(tf.constant(np.tile(cost_mask, batch_size * max_sequence_length), dtype=tf.float32), (batch_size, max_sequence_length, output_size))
@@ -29,42 +33,42 @@ class Lstm:
         self._create_model()
 
     def _create_model(self):
-        self.x = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.input_size]) #batch - timeseries - input vector
-        self.y = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.output_size]) #batch - timeseries - class vector
-        self.sequence_length = tf.placeholder(tf.int32, [self.batch_size]) #batch - timeseries length TODO is it ok?
-        initializer = utils.get_initializater(self.initialization_function)
-        activation = utils.get_activation(self.activation_function)
+        with tf.variable_scope(self.scope_name) as scope:
+            self.x = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.input_size]) #batch - timeseries - input vector
+            self.y = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.output_size]) #batch - timeseries - class vector
+            self.sequence_length = tf.placeholder(tf.int32, [self.batch_size])
+            initializer = utils.get_initializater(self.initialization_function)
+            activation = utils.get_activation(self.activation_function)
         
-        cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer, activation=activation) #TODO check if all the gates are present
+            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer, activation=activation) #TODO check if all the gates are present
 
-        outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
+            outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
 
-        self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function, lengths=self.sequence_length, cost_mask=self.cost_mask)
-        self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
+            self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function, lengths=self.sequence_length, cost_mask=self.cost_mask)
+            self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
 
-        correct_prediction = tf.equal(tf.argmax(outputs, 2), tf.argmax(self.y, 2))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+            correct_prediction = tf.equal(tf.argmax(outputs, 2), tf.argmax(self.y, 2))
+            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-        #Test
-        self.testLogits = tf.reshape(outputs, (-1, self.output_size))
-        self.testLabels = tf.reshape(self.y, (-1, self.output_size))
+            #Test
+            self.testLogits = tf.reshape(outputs, (-1, self.output_size))
+            self.testLabels = tf.reshape(self.y, (-1, self.output_size))
 
-        #Saver
-        self.saver = tf.train.Saver()
+            #Saver
+            self.saver = tf.train.Saver()
         
-        #Tensorboard
-        #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
+            #Tensorboard
+            #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
     
     def train(self, X, Y, lengths):
         batches_per_epoch = int(len(X) / self.batch_size)
-        initial_learning_rate = self.learning_rate
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for epoch in range(self.epoch):
                 avg_loss = 0.
                 avg_accuracy = 0.
-                self.learning_rate = (initial_learning_rate * 10) / (10 * (epoch + 1))
+                self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
                     batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
@@ -74,13 +78,14 @@ class Lstm:
                 avg_loss /= batches_per_epoch
                 avg_accuracy /= batches_per_epoch
                 print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.2f}%".format(epoch, avg_loss, avg_accuracy * 100))
-            self.saver.save(sess, './weights/lstm/checkpoint',0)
+            print('./weights/lstm/' + self.scope_name)
+            self.saver.save(sess, './weights/lstm/' + self.scope_name + '/checkpoint', global_step=0)
     
     def test(self, X, Y, lengths):
         batches_per_epoch = int(len(X) / self.batch_size)
 
         with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/lstm'))
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/lstm/' + self.scope_name))
             avg_accuracy = 0.
             avg_loss = 0.
             counters = [[0 for i in range(self.output_size)] for j in range(self.output_size)]

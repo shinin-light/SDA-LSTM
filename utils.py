@@ -53,6 +53,17 @@ class Utils:
             return tf.train.AdamOptimizer(learning_rate=learning_rate)
         raise BaseException("Invalid optimizer.")
 
+    def get_learning_rate(name, learning_rate, step):
+        if name == 'none':
+            return learning_rate
+        elif name == 'fraction':
+            return learning_rate / (1 + step)
+        elif name == 'exponential':
+            assert decay is not None, "Specify a decay rate."
+            assert decay > 0 and decay < 1, "Invalid decay rate."
+            return learning_rate * (0.99 ^ step)
+        raise BaseException("Invalid learning rate.")
+
     def homogenize(X, Y, ratio_threshold=1): #TODO: add also class0 records?
         assert ratio_threshold > 0 and ratio_threshold <= 1, "Invalid ratio threshold."
         class_num = len(Y[0])
