@@ -15,7 +15,7 @@ apply_reduction = True
 
 attributes_num = len(e_values[0][0])
 classes_num = len(e_classes[0][0])
-
+'''
 #---------------------LSTM-----------------------
 print("---------------------LSTM-----------------------")
 
@@ -41,7 +41,7 @@ input_size = len(lstm_values[0][0])
 output_size = len(lstm_classes[0][0])
 lstm = Lstm(max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, output_size=output_size, 
             loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=10, cost_mask=cost_mask)
+            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=1, cost_mask=cost_mask)
 
 
 lstm_train, lstm_test = utils.generate_rnn_train_test(lstm_values, lstm_classes, lstm_lengths, training_frac)
@@ -51,7 +51,7 @@ print("Error on training set:")
 lstm.test(lstm_train[0], lstm_train[1], lstm_train[2])
 print("Error on test set:")
 lstm.test(lstm_test[0], lstm_test[1], lstm_test[2])
-
+'''
 #---------------------SDAE-----------------------
 print("---------------------SDAE-----------------------")
 sdae_e_values = np.reshape(e_values,(-1,attributes_num))
@@ -67,7 +67,7 @@ sdae_values = np.concatenate((sdae_e_values, sdae_t_values))
 sdae = StackedAutoEncoder(dims=[25], activations=['relu'], decoding_activations=['sigmoid'], noise=['mask-0.7'],
                         epoch=[3000], loss=['cross-entropy'], lr=0.05, batch_size=100, print_step=200)
 '''
-sdae = StackedAutoEncoder(input_size=attributes_num, output_size=classes_num, dims=[50, 50, 25], encoding_functions=['tanh', 'tanh', 'relu'], 
+sdae = StackedAutoEncoder(input_size=attributes_num, dims=[50, 50, 25], encoding_functions=['tanh', 'tanh', 'relu'], 
                         decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epoch=[3000, 3000, 3000], 
                         loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=100, print_step=1000)
 
@@ -96,7 +96,7 @@ classifier_values = np.concatenate((classifier_e_values, classifier_t_values))
 classifier_classes = np.concatenate((classifier_e_classes, classifier_t_classes))
 
 classifier = ForwardClassifier(input_size=attributes_num, output_size=classes_num, dims=[80,20], activation_functions=['relu','relu'], 
-                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=10000,
+                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=1000,
                             learning_rate=0.007, batch_size=100, print_step=2000)
 classifier_train, classifier_test = utils.generate_classifier_train_test(classifier_values, classifier_classes, training_frac)
 print("Training Classifier...")
@@ -106,8 +106,8 @@ classifier.test(classifier_train[0], classifier_train[1])
 print("Error on test set:")
 classifier.test(classifier_test[0], classifier_test[1])
 
-#--------------sdae-feed-forward-----------------
-print("--------------sdae-feed-forward-----------------")
+#---------------sdae-feed-forward----------------
+print("---------------sdae-feed-forward----------------")
 sdae_classifier_e_values = sdae.encode(np.reshape(e_values,(-1, attributes_num)))
 sdae_classifier_t_values = sdae.encode(np.reshape(t_values,(-1, attributes_num)))
 sdae_classifier_e_classes = np.reshape(e_classes,(-1, classes_num))
@@ -124,7 +124,7 @@ sdae_classifier_values = np.concatenate((sdae_e_values, sdae_t_values))
 sdae_classifier_classes = np.concatenate((sdae_classifier_e_classes, sdae_classifier_t_classes))
 
 sdae_classifier = ForwardClassifier(input_size=attributes_num, output_size=classes_num, dims=[80,20], activation_functions=['relu','relu'], 
-                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=10000,
+                            output_activation_function='softmax', loss_function='rmse', optimization_function='adam', epoch=1000,
                             learning_rate=0.007, batch_size=100, print_step=2000)
 
 sdae_classifier_train, sdae_classifier_test = utils.generate_classifier_train_test(sdae_classifier_values, sdae_classifier_classes, training_frac)
@@ -134,3 +134,40 @@ print("Error on training set:")
 sdae_classifier.test(sdae_classifier_train[0], sdae_classifier_train[1])
 print("Error on test set:")
 sdae_classifier.test(sdae_classifier_test[0], sdae_classifier_test[1])
+
+#-------------------SDAE-LSTM--------------------
+print("-------------------SDAE-LSTM--------------------")
+
+sdae_lstm_e_values = np.array(sdae.timeseries_encode(e_values))
+sdae_lstm_t_values = np.array(sdae.timeseries_encode(t_values))
+sdae_lstm_e_classes = e_classes
+sdae_lstm_t_classes = t_classes
+
+max_sequence_length = 5
+
+sdae_lstm_e_values, sdae_lstm_e_classes, sdae_lstm_e_lengths = utils.rnn_shift_padding(sdae_lstm_e_values, sdae_lstm_e_classes, max_sequence_length)
+sdae_lstm_t_values, sdae_lstm_t_classes, sdae_lstm_t_lengths = utils.rnn_shift_padding(sdae_lstm_t_values, sdae_lstm_t_classes, max_sequence_length)
+
+if(apply_reduction):
+    selection = np.random.choice(len(sdae_lstm_e_values), min(len(sdae_lstm_e_values), len(sdae_lstm_t_values)), replace=False)
+    sdae_lstm_e_values, sdae_lstm_e_classes, sdae_lstm_e_lengths = sdae_lstm_e_values[selection], sdae_lstm_e_classes[selection], sdae_lstm_e_lengths[selection]
+
+sdae_lstm_values = np.concatenate((sdae_lstm_e_values, sdae_lstm_t_values))
+sdae_lstm_classes = np.concatenate((sdae_lstm_e_classes, sdae_lstm_t_classes))
+sdae_lstm_lengths = np.concatenate((sdae_lstm_e_lengths, sdae_lstm_t_lengths))
+
+cost_mask = utils.get_cost_mask(sdae_lstm_classes) / 10
+
+input_size = len(sdae_lstm_values[0][0])
+output_size = len(sdae_lstm_classes[0][0])
+sdae_lstm = Lstm(max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, output_size=output_size, 
+            loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
+            optimization_function='gradient-descent', learning_rate=0.05, batch_size=32, epoch=10, cost_mask=cost_mask)
+
+sdae_lstm_train, sdae_lstm_test = utils.generate_rnn_train_test(sdae_lstm_values, sdae_lstm_classes, sdae_lstm_lengths, training_frac)
+print("Training LSTM...")
+sdae_lstm.train(sdae_lstm_train[0],sdae_lstm_train[1], sdae_lstm_train[2])
+print("Error on training set:")
+sdae_lstm.test(sdae_lstm_train[0], sdae_lstm_train[1], sdae_lstm_train[2])
+print("Error on test set:")
+sdae_lstm.test(sdae_lstm_test[0], sdae_lstm_test[1], sdae_lstm_test[2])

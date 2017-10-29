@@ -13,10 +13,9 @@ class StackedAutoEncoder:
         assert len(self.loss_functions) == len(self.dims), "No. of loss functions must equal to no. of hidden layers"
         assert all(True if x > 0 else False for x in self.epoch), "No. of epoch must be at least 1"
 
-    def __init__(self, input_size, output_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epoch=1000,
+    def __init__(self, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epoch=1000,
                  learning_rate=0.001, batch_size=100, print_step=50):
         self.input_size = input_size
-        self.output_size = output_size
         self.print_step = print_step
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -142,6 +141,15 @@ class StackedAutoEncoder:
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae'))
             return sess.run(self.encoded_data, feed_dict={self.x[0]: data})
+
+    def timeseries_encode(self, data):
+        with tf.Session() as sess:
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae'))
+            result = []
+            for sequence in data:
+                encoded_sequence = sess.run(self.encoded_data, feed_dict={self.x[0]: sequence})
+                result.append(encoded_sequence)
+            return result
 
     def test(self, data, samples_shown=1, threshold=0.0):
         with tf.Session() as sess:
