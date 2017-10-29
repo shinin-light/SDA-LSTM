@@ -18,6 +18,7 @@ classes_num = len(e_classes[0][0])
 
 #---------------------LSTM-----------------------
 print("---------------------LSTM-----------------------")
+'''
 lstm_e_values = np.concatenate((e_values, e_classes), axis=2)
 lstm_t_values = np.concatenate((t_values, t_classes), axis=2)
 
@@ -50,7 +51,7 @@ print("Error on training set:")
 lstm.test(lstm_train[0], lstm_train[1], lstm_train[2])
 print("Error on test set:")
 lstm.test(lstm_test[0], lstm_test[1], lstm_test[2])
-
+'''
 #---------------------SDAE-----------------------
 print("---------------------SDAE-----------------------")
 sdae_e_values = np.reshape(e_values,(-1,attributes_num))
@@ -66,9 +67,9 @@ sdae_values = np.concatenate((sdae_e_values, sdae_t_values))
 sdae = StackedAutoEncoder(dims=[25], activations=['relu'], decoding_activations=['sigmoid'], noise=['mask-0.7'],
                         epoch=[3000], loss=['cross-entropy'], lr=0.05, batch_size=100, print_step=200)
 '''
-sdae = StackedAutoEncoder(dims=[50, 50, 25], activations=['tanh', 'tanh', 'relu'], decoding_activations=['sigmoid', 'sigmoid', 'sigmoid'], 
-                        noise=['mask-0.7','gaussian','gaussian'], epoch=[100, 100, 100], loss=['cross-entropy','rmse','rmse'], lr=0.01, 
-                        batch_size=100, print_step=200)
+sdae = StackedAutoEncoder(input_size=attributes_num, output_size=classes_num, dims=[50, 50, 25], encoding_functions=['tanh', 'tanh', 'relu'], 
+                        decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epoch=[1000, 1000, 1000], 
+                        loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=100, print_step=200)
 
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
 print("Training SDAE...")

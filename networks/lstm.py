@@ -66,27 +66,27 @@ class Lstm:
                 avg_accuracy = 0.
                 self.learning_rate = (initial_learning_rate * 10) / (10 * (epoch + 1))
                 for i in range(batches_per_epoch):
-                    batches_x, batches_y, batches_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
-                    sess.run(self.optimizer, feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
-                    loss, accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})
+                    batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
+                    sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                    loss, accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
                     avg_loss += loss
                     avg_accuracy += accuracy
                 avg_loss /= batches_per_epoch
                 avg_accuracy /= batches_per_epoch
                 print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.2f}%".format(epoch, avg_loss, avg_accuracy * 100))
-            self.saver.save(sess, './checkpoint',0)
+            self.saver.save(sess, './weights/lstm/checkpoint',0)
     
     def test(self, X, Y, lengths):
         batches_per_epoch = int(len(X) / self.batch_size)
 
         with tf.Session() as sess:
-            self.saver.restore(sess, tf.train.latest_checkpoint('.'))
+            self.saver.restore(sess, tf.train.latest_checkpoint('./weights/lstm'))
             avg_accuracy = 0.
             avg_loss = 0.
             counters = [[0 for i in range(self.output_size)] for j in range(self.output_size)]
             for i in range(batches_per_epoch):
-                batches_x, batches_y, batches_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)  
-                loss, accuracy, testLogits, testLabels = sess.run([self.loss, self.accuracy, self.testLogits, self.testLabels], feed_dict={self.x: batches_x, self.y: batches_y, self.sequence_length: batches_length})            
+                batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)  
+                loss, accuracy, testLogits, testLabels = sess.run([self.loss, self.accuracy, self.testLogits, self.testLabels], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})            
                 
                 for i in range(len(testLabels)):
                         label_idx = np.argmax(testLabels[i])
