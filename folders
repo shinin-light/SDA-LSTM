@@ -1,0 +1,9 @@
+data
+weights
+weights/lstm
+weights/sdae
+weights/forward
+logs
+logs/lstm
+logs/sdae
+logs/forward
