@@ -5,13 +5,13 @@ from utils import Utils as utils
 class StackedAutoEncoder:
     
     def assertions(self):
-        global allowed_activations, allowed_noises, allowed_losses
         assert 'list' in str( type(self.dims)), 'dims must be a list even if there is one layer.'
         assert len(self.epoch) == len(self.dims), "No. of epochs must equal to no. of hidden layers"
         assert len(self.encoding_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
         assert len(self.decoding_functions) == len( self.dims), "No. of decoding activations must equal to no. of hidden layers"
         assert len(self.loss_functions) == len(self.dims), "No. of loss functions must equal to no. of hidden layers"
         assert all(True if x > 0 else False for x in self.epoch), "No. of epoch must be at least 1"
+        assert utils.noise_validator(self.noise) == True, "Invalid noises."
 
     def __init__(self, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epoch=1000,
                  learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
@@ -116,7 +116,7 @@ class StackedAutoEncoder:
             for layer in range(self.depth):
                 print('Layer {0}'.format(layer + 1))
                 tmp = np.copy(X)
-                tmp = self._add_noise(tmp, layer)
+                tmp = utils.add_noise(tmp, self.noise[layer])
                 X = tmp
                 for epoch in range(self.epoch[layer]):
                     avg_loss = 0.
@@ -137,7 +137,7 @@ class StackedAutoEncoder:
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
             tmp = np.copy(X)
-            tmp = self._add_noise(tmp, 0)
+            tmp = utils.add_noise(tmp, self.noise[0])
             X = tmp
             for epoch in range(self.epoch[0]):
                 avg_loss = 0.
@@ -174,20 +174,4 @@ class StackedAutoEncoder:
                 for d, d_ in zip(data[i], decoded_data[i]):
                     if(abs(d-d_) >= threshold):
                         print('\tOriginal: {0:.2f} --- Reconstructed: {1:.2f} --- Difference: {2:.2f}'.format(d,d_,d-d_))
-            print("Test: loss = {0:.6f}".format(avg_loss))        
-
-    def _add_noise(self, x, layer):
-        if self.noise[layer] == 'none':
-            return x
-        if self.noise[layer] == 'gaussian':
-            n = np.random.normal(0, 0.1, (len(x), len(x[0])))
-            return x + n
-        if 'mask' in self.noise[layer]:
-            frac = float(self.noise[layer].split('-')[1])
-            temp = np.copy(x)
-            for i in temp:
-                n = np.random.choice(len(i), int(round(frac * len(i))), replace=False)
-                i[n] = 0
-            return temp
-        if self.noise[layer] == 'sp':
-            pass
+            print("Test: loss = {0:.6f}".format(avg_loss))

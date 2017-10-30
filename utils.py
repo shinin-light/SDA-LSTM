@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import math
 
 class Utils:
 
@@ -59,9 +60,7 @@ class Utils:
         elif name == 'fraction':
             return learning_rate / (1 + step)
         elif name == 'exponential':
-            assert decay is not None, "Specify a decay rate."
-            assert decay > 0 and decay < 1, "Invalid decay rate."
-            return learning_rate * (0.99 ^ step)
+            return learning_rate * math.pow(0.99, float(step))
         raise BaseException("Invalid learning rate.")
 
     def homogenize(X, Y, ratio_threshold=1): #TODO: add also class0 records?
@@ -158,13 +157,32 @@ class Utils:
                 newX_.append(tmpX_)
                 sequence_length.append(length)
         return np.array(newX), np.array(newX_), np.array(sequence_length)
-        
-    #SDAE
-    def noise_validator(noise, allowed_noises):
-        '''Validates the noise provided'''
-        for n in noise:
+    
+    def add_noise(x, noise):
+        shape = x.shape
+        x = np.reshape(x, (-1, shape[-1]))
+        result = []
+        if noise == 'none':
+            result = x
+        elif noise == 'gaussian':
+            n = np.random.normal(0, 0.1, (len(x), len(x[0])))
+            result = x + n
+        elif 'mask' in noise:
+            frac = float(noise.split('-')[1])
+            temp = np.copy(x)
+            for i in temp:
+                n = np.random.choice(len(i), int(round(frac * len(i))), replace=False)
+                i[n] = 0
+            result = temp   
+        result = np.reshape(result, shape)
+        return result
+
+    def noise_validator(noises):
+        if not isinstance(noises, list):
+            noises = [noises]
+        for n in noises:
             try:
-                if n in allowed_noises:
+                if n in ['none', 'gaussian']:
                     return True
                 elif n.split('-')[0] == 'mask' and float(n.split('-')[1]):
                     t = float(n.split('-')[1])
@@ -175,3 +193,4 @@ class Utils:
             except:
                 return False
             pass
+        return False

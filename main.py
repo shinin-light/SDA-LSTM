@@ -51,7 +51,7 @@ output_size = len(lstm_classes[0][0])
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=output_size, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epoch=10, cost_mask=cost_mask)
+            epoch=10, cost_mask=cost_mask, noise='gaussian')
 
 lstm_train, lstm_test = utils.generate_rnn_train_test(lstm_values, lstm_classes, lstm_lengths, training_frac)
 print("Training LSTM...")
@@ -80,11 +80,12 @@ sdae_classes = np.concatenate((sdae_e_values, sdae_t_values))
 
 
 sdae = StackedAutoEncoder(scope_name='basic-sdae', input_size=attributes_num, dims=[100], encoding_functions=['relu'], decoding_functions=['sigmoid'], 
-                        noise=['mask-0.5'], epoch=[10], loss_functions=['rmse'], optimization_function='gradient-descent', learning_rate=0.05, batch_size=128)              
+                        noise=['mask-0.5'], epoch=[10], loss_functions=['rmse'], optimization_function='gradient-descent', learning_rate=0.05, 
+                        batch_size=128)
 '''
 sdae = StackedAutoEncoder(input_size=attributes_num, dims=[150, 100, 50], encoding_functions=['tanh', 'tanh', 'relu'], 
                         decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epoch=[10, 10, 10], 
-                        loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=100)
+                        loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=128)
 '''
 
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
@@ -179,7 +180,7 @@ output_size = len(sdae_lstm_classes[0][0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=output_size, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epoch=10, cost_mask=cost_mask)
+            epoch=10, cost_mask=cost_mask, noise='gaussian')
 
 sdae_lstm_train, sdae_lstm_test = utils.generate_rnn_train_test(sdae_lstm_values, sdae_lstm_classes, sdae_lstm_lengths, training_frac)
 print("Training LSTM...")

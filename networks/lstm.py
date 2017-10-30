@@ -7,11 +7,12 @@ class Lstm:
     def assertions(self):
         global allowed_activations, allowed_losses
         assert self.max_sequence_length > 0, "Incorrect max sequence length"
+        assert utils.noise_validator(self.noise) == True, "Invalid noise."
         #assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
     def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, activation_function='tanh',
                 initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, 
-                learning_rate_decay='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
+                learning_rate_decay='none', noise='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
         self.max_sequence_length = max_sequence_length
         self.input_size = input_size
         self.state_size = state_size
@@ -24,6 +25,7 @@ class Lstm:
         self.learning_rate = learning_rate
         self.learning_rate_decay = learning_rate_decay
         self.initial_learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.learning_rate, 0)
+        self.noise = noise
         self.batch_size = batch_size
         self.scope_name = scope_name
         if(not len(cost_mask) > 0 or not self.output_size > 0): #TODO handle output_size <= 0
@@ -71,6 +73,7 @@ class Lstm:
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
                     batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
+                    batch_x = utils.add_noise(batch_x, self.noise)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
                     loss, accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
                     avg_loss += loss
@@ -78,7 +81,6 @@ class Lstm:
                 avg_loss /= batches_per_epoch
                 avg_accuracy /= batches_per_epoch
                 print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.2f}%".format(epoch, avg_loss, avg_accuracy * 100))
-            print('./weights/lstm/' + self.scope_name)
             self.saver.save(sess, './weights/lstm/' + self.scope_name + '/checkpoint', global_step=0)
     
     def test(self, X, Y, lengths):
