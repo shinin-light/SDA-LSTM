@@ -109,12 +109,8 @@ class Utils:
         assert size > 0, "Size should positive"
         assert start >= 0, "Start should not be negative"   
         return X[start:start+size], X_[start:start+size], lengths[start:start+size]
-    
-    def generate_sdae_train_test(X, training_fraction):
-        indexes = np.random.rand(X.shape[0]) < training_fraction
-        return X[indexes], X[~indexes]
 
-    def generate_classifier_train_test(X, Y, training_fraction):
+    def generate_flat_train_test(X, Y, training_fraction):
         indexes = np.random.rand(X.shape[0]) < training_fraction
         return [X[indexes], Y[indexes]], [X[~indexes], Y[~indexes]]
 

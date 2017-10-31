@@ -169,7 +169,7 @@ class StackedAutoEncoder:
             for sequence in data:
                 encoded_sequence = sess.run(self.encoded_data, feed_dict={self.x[0]: sequence})
                 result.append(encoded_sequence)
-            return result
+            return np.array(result)
 
     def test(self, data, samples_shown=1, threshold=0.0):
         with tf.Session() as sess:
