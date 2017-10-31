@@ -11,7 +11,7 @@ class Lstm:
         #assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
     def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, activation_function='tanh',
-                initialization_function='uniform', optimization_function='gradient-descent', epoch=1000, learning_rate=0.01, 
+                initialization_function='uniform', optimization_function='gradient-descent', epochs=10, learning_rate=0.01, 
                 learning_rate_decay='none', noise='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
         self.max_sequence_length = max_sequence_length
         self.input_size = input_size
@@ -21,7 +21,7 @@ class Lstm:
         self.loss_function = loss_function
         self.initialization_function = initialization_function
         self.optimization_function = optimization_function
-        self.epoch = epoch
+        self.epochs = epochs
         self.learning_rate = learning_rate
         self.learning_rate_decay = learning_rate_decay
         self.initial_learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.learning_rate, 0)
@@ -62,12 +62,15 @@ class Lstm:
             #Tensorboard
             #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
     
-    def train(self, X, Y, lengths):
+    def train(self, X, Y, lengths, epochs=None):
         batches_per_epoch = int(len(X) / self.batch_size)
+
+        if epochs is None:
+            epochs = self.epochs
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            for epoch in range(self.epoch):
+            for epoch in range(epochs):
                 avg_loss = 0.
                 avg_accuracy = 0.
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)

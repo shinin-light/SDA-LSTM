@@ -6,14 +6,13 @@ class StackedAutoEncoder:
     
     def assertions(self):
         assert 'list' in str( type(self.dims)), 'dims must be a list even if there is one layer.'
-        assert len(self.epoch) == len(self.dims), "No. of epochs must equal to no. of hidden layers"
         assert len(self.encoding_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
         assert len(self.decoding_functions) == len( self.dims), "No. of decoding activations must equal to no. of hidden layers"
         assert len(self.loss_functions) == len(self.dims), "No. of loss functions must equal to no. of hidden layers"
-        assert all(True if x > 0 else False for x in self.epoch), "No. of epoch must be at least 1"
+        assert self.epochs > 0, "No. of epochs must be at least 1"
         assert utils.noise_validator(self.noise) == True, "Invalid noises."
 
-    def __init__(self, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epoch=1000,
+    def __init__(self, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epochs=10,
                  learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
         self.input_size = input_size
         self.batch_size = batch_size
@@ -25,7 +24,7 @@ class StackedAutoEncoder:
         self.encoding_functions = encoding_functions
         self.decoding_functions = decoding_functions
         self.noise = noise
-        self.epoch = epoch
+        self.epochs = epochs
         self.dims = dims
         self.depth = len(dims)
         self.scope_name = scope_name
@@ -108,8 +107,11 @@ class StackedAutoEncoder:
             #Tensorboard
             #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
 
-    def train(self, X):
+    def train(self, X, epochs=None):
         batches_per_epoch = int(len(X) / self.batch_size)
+
+        if epochs is None:
+            epochs = self.epochs
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -118,7 +120,7 @@ class StackedAutoEncoder:
                 tmp = np.copy(X)
                 tmp = utils.add_noise(tmp, self.noise[layer])
                 X = tmp
-                for epoch in range(self.epoch[layer]):
+                for epoch in range(epochs):
                     avg_loss = 0.
                     self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                     for i in range(batches_per_epoch):
@@ -131,15 +133,19 @@ class StackedAutoEncoder:
                 X = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X})
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
-    def finetune(self, X):
+    def finetune(self, X, epochs=None):
         print('Fine Tuning')
+
+        if epochs is None:
+            epochs = self.epochs
+
         batches_per_epoch = int(len(X) / self.batch_size)
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
             tmp = np.copy(X)
             tmp = utils.add_noise(tmp, self.noise[0])
             X = tmp
-            for epoch in range(self.epoch[0]):
+            for epoch in range(epochs):
                 avg_loss = 0.
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):

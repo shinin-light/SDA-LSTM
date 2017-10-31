@@ -7,9 +7,9 @@ class ForwardClassifier:
     def assertions(self):
         assert 'list' in str(type(self.dims)), 'dims must be a list even if there is one layer.'
         assert len(self.activation_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
-        assert self.epoch > 0, "No. of epoch must be at least 1"
+        assert self.epochs > 0, "No. of epochs must be at least 1"
 
-    def __init__(self, input_size, output_size, dims, activation_functions, output_activation_function, loss_function, optimization_function='gradient-descent', epoch=1000,
+    def __init__(self, input_size, output_size, dims, activation_functions, output_activation_function, loss_function, optimization_function='gradient-descent', epochs=10,
                  learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
         self.input_size = input_size
         self.output_size = output_size
@@ -21,7 +21,7 @@ class ForwardClassifier:
         self.optimization_function = optimization_function
         self.output_activation_function = output_activation_function
         self.activation_functions = activation_functions
-        self.epoch = epoch
+        self.epochs = epochs
         self.dims = dims
         self.scope_name = scope_name
         self.assertions()
@@ -72,12 +72,15 @@ class ForwardClassifier:
             #Tensorboard
             #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
 
-    def train(self, X, Y):
+    def train(self, X, Y, epochs=None):
         batches_per_epoch = int(len(X) / self.batch_size)
+
+        if epochs is None:
+            epochs = self.epochs
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
-            for epoch in range(self.epoch):
+            for epoch in range(epochs):
                 avg_loss = 0.
                 avg_accuracy = 0.
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
