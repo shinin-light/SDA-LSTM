@@ -33,7 +33,7 @@ max_sequence_length = 5 #TODO: max between e,t -1
 e_values, e_classes, e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
 t_values, t_classes, t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
 
-
+'''
 #---------------------SVM------------------------
 print("---------------------SVM------------------------")
 svm_e_values = np.reshape(e_values,(-1, attributes_num))
@@ -93,7 +93,7 @@ print("Error on training set:")
 lstm.test(lstm_train[0], lstm_train[1], lstm_train[2])
 print("Error on test set:")
 lstm.test(lstm_test[0], lstm_test[1], lstm_test[2])
-
+'''
 #---------------------SDAE-----------------------
 print("---------------------SDAE-----------------------")
 sdae_e_values = np.reshape(e_values,(-1, attributes_num))
@@ -115,7 +115,7 @@ sdae = StackedAutoEncoder(input_size=attributes_num, dims=[150, 100, 50], encodi
                         decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epochs=10, 
                         loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=128)
 
-
+'''
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
 print("Training SDAE...")
 sdae.train(sdae_values)
@@ -217,3 +217,29 @@ print("Error on training set:")
 sdae_lstm.test(sdae_lstm_train[0], sdae_lstm_train[1], sdae_lstm_train[2])
 print("Error on test set:")
 sdae_lstm.test(sdae_lstm_test[0], sdae_lstm_test[1], sdae_lstm_test[2])
+'''
+
+#---------------------SVM------------------------
+print("----------------------SVM-----------------------")
+svm_e_values = np.reshape(e_values,(-1, attributes_num))
+svm_t_values = np.reshape(t_values,(-1, attributes_num))
+svm_e_classes = np.reshape(e_classes,(-1, classes_num))
+svm_t_classes = np.reshape(t_classes,(-1, classes_num))
+
+svm_e_values, svm_e_classes = utils.homogenize(svm_e_values, svm_e_classes, 0.3)
+svm_t_values, svm_t_classes = utils.homogenize(svm_t_values, svm_t_classes, 0.3)
+
+if(apply_reduction):
+    selection = np.random.choice(len(svm_e_values), min(len(svm_e_values), len(svm_t_values)), replace=False)
+    svm_e_values, svm_e_classes = svm_e_values[selection], svm_e_classes[selection]
+
+svm_values = np.concatenate((svm_e_values, svm_t_values))
+svm_classes = np.concatenate((svm_e_classes, svm_t_classes))
+
+svm_values = np.array(sdae.encode(svm_values))
+
+svm_train, svm_test = utils.generate_classifier_train_test(svm_values, svm_classes, training_frac)
+
+svm = Svm()
+svm.train(svm_train[0], svm_train[1])
+svm.test(svm_test[0], svm_test[1])
