@@ -2,6 +2,7 @@ import numpy as np
 from networks import StackedAutoEncoder
 from networks import ForwardClassifier
 from networks import Lstm
+from networks import Svm
 from utils import Utils as utils
 import os
 
@@ -28,13 +29,45 @@ apply_reduction = True
 attributes_num = len(e_values[0][0])
 classes_num = len(e_classes[0][0])
 
+max_sequence_length = 5 #TODO: max between e,t -1
+e_values, e_classes, e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
+t_values, t_classes, t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
+
+
+#---------------------SVM------------------------
+print("---------------------SVM------------------------")
+svm_e_values = np.reshape(e_values,(-1, attributes_num))
+svm_t_values = np.reshape(t_values,(-1, attributes_num))
+svm_e_classes = np.reshape(e_classes,(-1, classes_num))
+svm_t_classes = np.reshape(t_classes,(-1, classes_num))
+
+svm_e_values, svm_e_classes = utils.homogenize(svm_e_values, svm_e_classes, 0.3)
+svm_t_values, svm_t_classes = utils.homogenize(svm_t_values, svm_t_classes, 0.3)
+
+if(apply_reduction):
+    selection = np.random.choice(len(svm_e_values), min(len(svm_e_values), len(svm_t_values)), replace=False)
+    svm_e_values, svm_e_classes = svm_e_values[selection], svm_e_classes[selection]
+
+svm_values = np.concatenate((svm_e_values, svm_t_values))
+svm_classes = np.concatenate((svm_e_classes, svm_t_classes))
+
+svm = Svm(scope_name='basic-SVM', epochs=20, input_size=attributes_num, output_size=classes_num, batch_size=32)
+
+svm_train, svm_test = utils.generate_classifier_train_test(svm_values, svm_classes, training_frac)
+print("Training SVM...")
+svm.train(svm_train[0], svm_train[1])
+print("Error on training set:")
+svm.test(svm_train[0], svm_train[1])
+print("Error on test set:")
+svm.test(svm_test[0], svm_test[1])
+
 #---------------------LSTM-----------------------
 print("---------------------LSTM-----------------------")
 
 max_sequence_length = 5
 
-lstm_e_values, lstm_e_classes, lstm_e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
-lstm_t_values, lstm_t_classes, lstm_t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
+#lstm_e_values, lstm_e_classes, lstm_e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
+#lstm_t_values, lstm_t_classes, lstm_t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
 
 if(apply_reduction):
     selection = np.random.choice(len(lstm_e_values), min(len(lstm_e_values), len(lstm_t_values)), replace=False)
@@ -78,15 +111,10 @@ if(apply_reduction):
 sdae_values = np.concatenate((sdae_e_values, sdae_t_values))
 sdae_classes = np.concatenate((sdae_e_values, sdae_t_values))
 
-
-sdae = StackedAutoEncoder(scope_name='basic-sdae', input_size=attributes_num, dims=[100], encoding_functions=['relu'], decoding_functions=['sigmoid'], 
-                        noise=['mask-0.5'], epochs=10, loss_functions=['rmse'], optimization_function='gradient-descent', learning_rate=0.05, 
-                        batch_size=128)
-'''
 sdae = StackedAutoEncoder(input_size=attributes_num, dims=[150, 100, 50], encoding_functions=['tanh', 'tanh', 'relu'], 
                         decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'], noise=['mask-0.7','gaussian','gaussian'], epochs=10, 
                         loss_functions=['sigmoid-cross-entropy','rmse','rmse'], optimization_function='adam', learning_rate=0.01, batch_size=128)
-'''
+
 
 sdae_train, sdae_test = utils.generate_sdae_train_test(sdae_values, training_frac)
 print("Training SDAE...")

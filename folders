@@ -1,9 +1,11 @@
 data
 weights
 weights/lstm
+weights/svm
 weights/sdae
 weights/forward
 logs
 logs/lstm
 logs/sdae
+logs/svm
 logs/forward

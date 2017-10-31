@@ -63,20 +63,27 @@ class Utils:
             return learning_rate * math.pow(0.99, float(step))
         raise BaseException("Invalid learning rate.")
 
+    def classes_matching_matrix(Y):
+        result = np.copy(Y)
+        result[result == 0] = -1
+        return np.transpose(result)
+
     def homogenize(X, Y, ratio_threshold=1): #TODO: add also class0 records?
         assert ratio_threshold > 0 and ratio_threshold <= 1, "Invalid ratio threshold."
         class_num = len(Y[0])
         class_occurrences = np.int32(np.sum(Y, 0))
         class_max_occurrence = np.int32(np.max(class_occurrences) * ratio_threshold)
         class_indexes = [np.where((np.argmax(Y,1) == i) & (np.sum(Y,1) > 0)) for i in range(class_num)]
-
+        
         newX = []
         newY = []
         for i in range(len(class_indexes)):
             if(class_occurrences[i] >= class_max_occurrence):
                 idx = range(class_occurrences[i])
-            else:
+            elif(class_occurrences[i] > 0):
                 idx = np.random.choice(len(class_indexes[i][0]), class_max_occurrence)
+            else:
+                continue
             for j in idx:
                 newX.append(X[class_indexes[i][0][j]])
                 newY.append(Y[class_indexes[i][0][j]])
