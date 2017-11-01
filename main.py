@@ -4,9 +4,10 @@ from networks import ForwardClassifier
 from networks import Lstm
 from networks import Svm
 from utils import Utils as utils
+from sklearn import utils as skutils
 import os
 
-training_frac = 0.3
+training_frac = 0.8
 apply_reduction = True
 
 #--------------------folders---------------------
@@ -49,11 +50,16 @@ flat_classes = np.reshape(rnn_classes,(-1, classes_num))
 flat_values, flat_classes = utils.homogenize(flat_values, flat_classes, 0.3)
 
 flat_train, flat_test = utils.generate_flat_train_test(flat_values, flat_classes, training_frac)
-'''
+
+
+cost_mask = utils.get_cost_mask(rnn_classes)
+cost_mask /= np.mean(cost_mask)
+#weights = skutils.compute_class_weight(class_weight='balanced', classes=np.array(range(10)), y=np.argmax(flat_classes, 1))
+
 #---------------------SVM------------------------
 print("---------------------SVM------------------------")
 
-svm = Svm()
+svm = Svm(cost_mask=cost_mask)
 
 print("Training SVM...")
 svm.train(flat_train[0], flat_train[1])
@@ -61,11 +67,10 @@ print("Error on training set:")
 svm.test(flat_train[0], flat_train[1])
 print("Error on test set:")
 svm.test(flat_test[0], flat_test[1])
-'''
+
 #---------------------LSTM-----------------------
 print("---------------------LSTM-----------------------")
 
-cost_mask = utils.get_cost_mask(rnn_classes) / 10
 input_size = len(rnn_values[0][0])
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier',
@@ -83,8 +88,8 @@ lstm.test(rnn_test[0], rnn_test[1], rnn_test[2])
 print("---------------------SDAE-----------------------")
 
 sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=attributes_num, dims=[150, 100, 50], optimization_function='adam',
-                        encoding_functions=['tanh', 'tanh', 'relu'], decoding_functions=['sigmoid', 'sigmoid', 'sigmoid'],
-                        noise=['mask-0.7','gaussian','gaussian'], epochs=10, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
+                        encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['sigmoid', 'tanh', 'tanh'],
+                        noise=['mask-0.7','gaussian','gaussian'], epochs=10, loss_functions=['rmse','rmse','rmse'], 
                         learning_rate=0.01, batch_size=128)
 
 print("Training SDAE...")
@@ -127,14 +132,13 @@ sdae_classifier.test(sdae_classifier_test, flat_test[1])
 #-------------------SDAE-LSTM--------------------
 print("-------------------SDAE-LSTM--------------------")
 
-cost_mask = utils.get_cost_mask(rnn_classes) / 10
 sdae_lstm_train = sdae.timeseries_encode(rnn_train[0])
 sdae_lstm_test = sdae.timeseries_encode(rnn_test[0])
 input_size = len(sdae_lstm_train[0][0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.001, learning_rate_decay='fraction', batch_size=32, 
-            epochs=10, cost_mask=cost_mask, noise='gaussian')
+            optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
+            epochs=10, cost_mask=cost_mask)
 
 print("Training SDAE-LSTM...")
 sdae_lstm.train(sdae_lstm_train, rnn_train[1], rnn_train[2])
@@ -142,13 +146,13 @@ print("Error on training set:")
 sdae_lstm.test(sdae_lstm_train, rnn_train[1], rnn_train[2])
 print("Error on test set:")
 sdae_lstm.test(sdae_lstm_test, rnn_test[1], rnn_test[2])
-'''
+
 #--------------------SDAE-SVM--------------------
 print("--------------------SDAE-SVM--------------------")
 
 sdae_svm_train = sdae.encode(flat_train[0])
 sdae_svm_test = sdae.encode(flat_test[0])
-sdae_svm = Svm()
+sdae_svm = Svm(cost_mask=cost_mask)
 
 print("Training SDAE-SVM...")
 sdae_svm.train(sdae_svm_train, flat_train[1])
@@ -156,4 +160,3 @@ print("Error on training set:")
 sdae_svm.test(sdae_svm_train, flat_train[1])
 print("Error on test set:")
 sdae_svm.test(sdae_svm_test, flat_test[1])
-'''
