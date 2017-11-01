@@ -66,6 +66,10 @@ class ForwardClassifier:
             correct_prediction = tf.equal(tf.argmax(self.output, 1), tf.argmax(self.y, 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
+            #Test
+            self.testLogits = outputs
+            self.testLabels = self.y
+
             #Saver
             self.saver = tf.train.Saver()
 
@@ -98,5 +102,15 @@ class ForwardClassifier:
     def test(self, X, Y, samples_shown=1):
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/forward/' + self.scope_name))
-            avg_loss, avg_accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: X, self.y: Y})
+            self.confusion_matrix = [[0 for i in range(self.output_size)] for j in range(self.output_size)]
+            avg_loss, avg_accuracy, testLabels, testLogits = sess.run([self.loss, self.accuracy, self.testLabels, self.testLogits], feed_dict={self.x: X, self.y: Y})
+
+            for i in range(len(testLabels)):
+                if np.sum(testLabels[i]) > 0:
+                    label_idx = np.argmax(testLabels[i])
+                    logit_idx = np.argmax(testLogits[i])
+                    self.confusion_matrix[label_idx][logit_idx] += 1
+
+            [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i])), self.confusion_matrix[i]) for i in range(len(self.confusion_matrix))]
             print("Test: loss = {0:.6f}, accuracy = {1:.2f}%".format(avg_loss, avg_accuracy * 100))
+        return self.confusion_matrix

@@ -54,6 +54,7 @@ flat_train, flat_test = utils.generate_flat_train_test(flat_values, flat_classes
 
 cost_mask = utils.get_cost_mask(rnn_classes)
 cost_mask /= np.mean(cost_mask)
+cost_mask = np.sqrt(cost_mask)
 #weights = skutils.compute_class_weight(class_weight='balanced', classes=np.array(range(10)), y=np.argmax(flat_classes, 1))
 
 #---------------------SVM------------------------
@@ -75,7 +76,7 @@ input_size = len(rnn_values[0][0])
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epochs=100, cost_mask=cost_mask, noise='gaussian')
+            epochs=1, cost_mask=cost_mask, noise='gaussian')
 
 print("Training LSTM...")
 lstm.train(rnn_train[0], rnn_train[1], rnn_train[2])
@@ -87,9 +88,10 @@ lstm.test(rnn_test[0], rnn_test[1], rnn_test[2])
 #---------------------SDAE-----------------------
 print("---------------------SDAE-----------------------")
 
-sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=attributes_num, dims=[150, 100, 50], optimization_function='adam',
+sdae = StackedAutoEncoder(scope_name='three-layers-sdaeeeeeebbestia', input_size=attributes_num, dims=[150, 100, 50], optimization_function='adam',
                         encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['sigmoid', 'tanh', 'tanh'],
-                        noise=['mask-0.7','gaussian','gaussian'], epochs=10, loss_functions=['rmse','rmse','rmse'], 
+                        noise=['mask-0.7','gaussian','gaussian'], epochs=1, loss_functions=['rmse','rmse','rmse'], 
+                        learning_rate=0.01, batch_size=128)
 
 print("Training SDAE...")
 sdae.train(flat_values)
@@ -100,9 +102,9 @@ sdae.finetune(flat_train[0])
 #------------------CLASSIFIER--------------------
 print("------------------CLASSIFIER--------------------")
 
-classifier = ForwardClassifier(scope_name='basic-forward', input_size=attributes_num, output_size=classes_num, dims=[80,20], 
-                            activation_functions=['relu','relu'], output_activation_function='softmax', loss_function='rmse', 
-                            optimization_function='adam', epochs=10, learning_rate=0.05, batch_size=128)
+classifier = ForwardClassifier(scope_name='basic-forward', input_size=attributes_num, output_size=classes_num, dims=[100,40], 
+                            activation_functions=['tanh','tanh'], output_activation_function='linear', loss_function='sparse-softmax-cross-entropy', 
+                            optimization_function='gradient-descent', epochs=1, learning_rate=0.05, batch_size=128)
 
 print("Training CLASSIFIER...")
 classifier.train(flat_train[0], flat_train[1])
@@ -117,9 +119,9 @@ print("----------------SDAE-CLASSIFIER-----------------")
 sdae_classifier_train = sdae.encode(flat_train[0])
 sdae_classifier_test = sdae.encode(flat_test[0])
 input_size = len(sdae_classifier_train[0])
-sdae_classifier = ForwardClassifier(scope_name='sdae-forward', input_size=input_size, output_size=classes_num, dims=[80,20], 
-                            activation_functions=['relu','relu'], output_activation_function='softmax', loss_function='rmse', 
-                            optimization_function='adam', epochs=10, learning_rate=0.05, batch_size=128)
+sdae_classifier = ForwardClassifier(scope_name='sdae-forward', input_size=input_size, output_size=classes_num, dims=[100,40], 
+                            activation_functions=['tanh','tanh'], output_activation_function='linear', loss_function='sparse-softmax-cross-entropy', 
+                            optimization_function='gradient-descent', epochs=1, learning_rate=0.05, batch_size=128)
 
 print("Training SDAE-CLASSIFIER...")
 sdae_classifier.train(sdae_classifier_train, flat_train[1])
@@ -137,7 +139,7 @@ input_size = len(sdae_lstm_train[0][0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
             optimization_function='gradient-descent', learning_rate=0.01, learning_rate_decay='fraction', batch_size=32, 
-            epochs=10, cost_mask=cost_mask)
+            epochs=1, cost_mask=cost_mask)
 
 print("Training SDAE-LSTM...")
 sdae_lstm.train(sdae_lstm_train, rnn_train[1], rnn_train[2])

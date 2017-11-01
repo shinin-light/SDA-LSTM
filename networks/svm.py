@@ -11,6 +11,9 @@ class Svm:
         self.classifier = lm.SGDClassifier(max_iter=100, class_weight=self.cost_mask, loss=loss, penalty=penalty, alpha=alpha)
         
     def train(self, X, Y):
+        idx = np.where(np.sum(Y, 1) > 0)[0]
+        X = X[idx]
+        Y = Y[idx]
         Y = np.argmax(Y, 1)
         
         batches = int(len(X) / self.batch_size)
@@ -20,11 +23,15 @@ class Svm:
 
     def test(self, X, Y):
         output_size = len(Y[0])
+        idx = np.where(np.sum(Y, 1) > 0)[0]
+        X = X[idx]
+        Y = Y[idx]
         Y = np.argmax(Y, 1)
         outputs = self.classifier.predict(X)
         
-        counters = [[0 for i in range(output_size)] for j in range(output_size)]
+        self.confusion_matrix = [[0 for i in range(output_size)] for j in range(output_size)]
         for i in range(len(outputs)):
-            counters[Y[i]][outputs[i]] += 1
+            self.confusion_matrix[Y[i]][outputs[i]] += 1
 
-        [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, counters[i][i] / np.sum(counters[i])), counters[i]) for i in range(len(counters))]
+        [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i])), self.confusion_matrix[i]) for i in range(len(self.confusion_matrix))]
+        return self.confusion_matrix

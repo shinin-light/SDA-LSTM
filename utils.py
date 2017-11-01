@@ -12,7 +12,7 @@ class Utils:
         elif name == 'softplus':
             return tf.nn.softplus
         elif name == 'linear':
-            return linear
+            return lambda x: x
         elif name == 'tanh':
             return tf.nn.tanh
         elif name == 'relu':

@@ -93,20 +93,22 @@ class Lstm:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/lstm/' + self.scope_name))
             avg_accuracy = 0.
             avg_loss = 0.
-            counters = [[0 for i in range(self.output_size)] for j in range(self.output_size)]
+            self.confusion_matrix = [[0 for i in range(self.output_size)] for j in range(self.output_size)]
             for i in range(batches_per_epoch):
                 batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)  
                 loss, accuracy, testLogits, testLabels = sess.run([self.loss, self.accuracy, self.testLogits, self.testLabels], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})            
                 
                 for i in range(len(testLabels)):
+                    if np.sum(testLabels[i]) > 0:
                         label_idx = np.argmax(testLabels[i])
                         logit_idx = np.argmax(testLogits[i])
-                        counters[label_idx][logit_idx] += 1
+                        self.confusion_matrix[label_idx][logit_idx] += 1
                 
                 avg_loss += loss
                 avg_accuracy += accuracy
-            [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, counters[i][i] / np.sum(counters[i])), counters[i]) for i in range(len(counters))]
+            [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i])), self.confusion_matrix[i]) for i in range(len(self.confusion_matrix))]
             avg_loss /= batches_per_epoch
             avg_accuracy /= batches_per_epoch
             print("Test: loss = {0:.6f}, accuracy = {1:.2f}%".format(avg_loss, avg_accuracy * 100))
+        return self.confusion_matrix
 
