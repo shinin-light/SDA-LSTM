@@ -19,9 +19,23 @@ class Utils:
             return tf.nn.relu
         raise BaseException("Invalid activation function.")
 
-    def get_loss(logits, labels, name, lengths=None, cost_mask=None):
+    def get_loss(logits, labels, name, lengths=None, cost_mask=None, max_length=None):
         if name == 'rmse':
             return tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(labels, logits))))
+        elif name == 'weighted-rmse':
+            assert lengths != None, "Specify lengths array."
+            assert max_length != None, "Specify maximum length."
+            assert cost_mask != None, "Specify cost mask array."
+            index = len(labels.shape) - 1
+            length_mask = tf.cast([tf.concat([tf.ones([lengths[i]]),tf.zeros([max_length - lengths[i]])], 0) for i in range(labels.shape[0])], tf.float32)
+            
+            rmse = tf.reduce_mean(tf.square(tf.subtract(labels, logits)), index)
+            rmse = tf.multiply(rmse, length_mask)
+            rmse = tf.multiply(rmse, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
+            rmse = tf.multiply(rmse, tf.cast(tf.maximum(tf.argmax(labels, index) + 1 - tf.argmax(logits, index), 1), dtype=tf.float32))
+            rmse = tf.reduce_sum(rmse, reduction_indices=1)
+            rmse = tf.divide(rmse, tf.cast(lengths, dtype=tf.float32))
+            return tf.sqrt(tf.reduce_mean(rmse))
         elif name == 'softmax-cross-entropy':
             return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
         elif name == 'sparse-softmax-cross-entropy':
@@ -35,6 +49,7 @@ class Utils:
             index = len(labels.shape) - 1
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, index))
             cross_entropy = tf.multiply(cross_entropy, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
+            cross_entropy = tf.multiply(cross_entropy, tf.cast(tf.maximum(tf.argmax(labels, index) - tf.argmax(logits, index), 1), dtype=tf.float32))
             cross_entropy = tf.reduce_sum(cross_entropy, reduction_indices=1)
             cross_entropy = tf.divide(cross_entropy, tf.cast(lengths, dtype=tf.float32))
             return tf.reduce_mean(cross_entropy)

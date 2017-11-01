@@ -46,7 +46,7 @@ class Lstm:
 
             outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
 
-            self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function, lengths=self.sequence_length, cost_mask=self.cost_mask)
+            self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function, lengths=self.sequence_length, cost_mask=self.cost_mask, max_length=self.max_sequence_length)
             self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
 
             correct_prediction = tf.equal(tf.argmax(outputs, 2), tf.argmax(self.y, 2))

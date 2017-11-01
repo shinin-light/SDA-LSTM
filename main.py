@@ -75,7 +75,7 @@ input_size = len(rnn_values[0][0])
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epochs=10, cost_mask=cost_mask, noise='gaussian')
+            epochs=100, cost_mask=cost_mask, noise='gaussian')
 
 print("Training LSTM...")
 lstm.train(rnn_train[0], rnn_train[1], rnn_train[2])
@@ -90,7 +90,6 @@ print("---------------------SDAE-----------------------")
 sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=attributes_num, dims=[150, 100, 50], optimization_function='adam',
                         encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['sigmoid', 'tanh', 'tanh'],
                         noise=['mask-0.7','gaussian','gaussian'], epochs=10, loss_functions=['rmse','rmse','rmse'], 
-                        learning_rate=0.01, batch_size=128)
 
 print("Training SDAE...")
 sdae.train(flat_values)
@@ -137,7 +136,7 @@ sdae_lstm_test = sdae.timeseries_encode(rnn_test[0])
 input_size = len(sdae_lstm_train[0][0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
             output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
-            optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
+            optimization_function='gradient-descent', learning_rate=0.01, learning_rate_decay='fraction', batch_size=32, 
             epochs=10, cost_mask=cost_mask)
 
 print("Training SDAE-LSTM...")
