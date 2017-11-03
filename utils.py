@@ -114,25 +114,25 @@ class Utils:
 
         return np.array(newX, dtype=np.float32), np.array(newY, dtype=np.float32)
 
-    def get_batch(X, X_, size): 
+    def get_batch(X, Y, size): 
         assert size > 0, "Size should positive"
         idx = np.random.choice(len(X), size, replace=False)
-        return X[idx], X_[idx]
+        return X[idx], Y[idx]
     
-    def get_sequential_batch(X, X_, start, size):
+    def get_sequential_batch(X, Y, start, size):
         assert size > 0, "Size should positive"
         assert start >= 0, "Start should not be negative"   
-        return X[start:start+size], X_[start:start+size]
+        return X[start:start+size], Y[start:start+size]
 
-    def get_rnn_batch(X, X_, lengths, size): 
+    def get_rnn_batch(X, Y, lengths, size): 
         assert size > 0, "Size should positive"
         idx = np.random.choice(len(X), size, replace=False)
-        return X[idx], X_[idx], lengths[idx]
+        return X[idx], Y[idx], lengths[idx]
 
-    def get_rnn_sequential_batch(X, X_, lengths, start, size):
+    def get_rnn_sequential_batch(X, Y, lengths, start, size):
         assert size > 0, "Size should positive"
         assert start >= 0, "Start should not be negative"   
-        return X[start:start+size], X_[start:start+size], lengths[start:start+size]
+        return X[start:start+size], Y[start:start+size], lengths[start:start+size]
 
     def generate_flat_train_test(X, Y, training_fraction):
         indexes = np.random.rand(X.shape[0]) < training_fraction
@@ -148,42 +148,64 @@ class Utils:
         class_max_occurrence = np.int32(np.max(class_occurrences))
         return np.array(class_max_occurrence / class_occurrences)
 
-    def rnn_shift_padding(X, X_, max_sequence_length): #TODO fix truncate case
+    def rnn_shift_padding(X, Y, max_sequence_length): #TODO fix truncate case
         assert len(X) > 0, "Dataset should have at least one timeseries"
-        assert len(X) == len(X_), "Input and classes should have the same length"
+        assert len(X) == len(Y), "Input and classes should have the same length"
         assert max_sequence_length > 0, "Max sequence length should be positive" 
         dim = len(X)
         input_size = len(X[0][0])
-        class_size = len(X_[0][0])
+        class_size = len(Y[0][0])
         newX = []
-        newX_ = []
+        newY = []
+        newYdiff = []
+        newYincr = []
         sequence_length = []
 
-        for index in range(len(X_)):
+        for index in range(len(Y)):
             start = 0
             end = 0
 
-            if(np.max(X_[index]) > 0): #at least 1 valid class
-                start = np.where(np.array([np.max(wave) for wave in X_[index]]) > 0)[0][0]
-                end = np.where(np.array([np.max(wave) for wave in X_[index]]) > 0)[0][-1:][0]
-            if(end > max_sequence_length):
-                end = max_sequence_length
+            if(np.max(Y[index]) > 0): #at least 1 valid class
+                start = np.where(np.array([np.max(wave) for wave in Y[index]]) > 0)[0][0]
+                end = np.where(np.array([np.max(wave) for wave in Y[index]]) > 0)[0][-1:][0]
+            if(end - start > max_sequence_length):
+                end = start + max_sequence_length
             length = end - start
 
-            shifted_classes = np.concatenate((X_[index][1:], [np.zeros(class_size)]))
+            shifted_classes = np.concatenate((Y[index][1:], [np.zeros(class_size)]))
+            classes = np.copy(Y[index])
+            zeros = [[0] for i in range(len(classes))]
+            classes_value = np.hstack((zeros, classes))
+            classes_value = np.argmax(classes_value, 1)
+
+            last_found = 0
+            for i in range(len(classes_value)):
+                if classes_value[i] != 0: 
+                    last_found = classes_value[i]
+                else:
+                    classes_value[i] = last_found
+
+            shifted_classes_value = np.concatenate((classes_value[1:], [last_found]))
+            shifted_classes_value = shifted_classes_value - classes_value
+
             waves_indexes = np.arange(start, end)
             if(length < max_sequence_length):
                 tmpX = np.concatenate((X[index][waves_indexes], [np.zeros(input_size) for i in range(length, max_sequence_length)]))
-                tmpX_ = np.concatenate((shifted_classes[waves_indexes], [np.zeros(class_size) for i in range(length, max_sequence_length)]))
+                tmpY = np.concatenate((shifted_classes[waves_indexes], [np.zeros(class_size) for i in range(length, max_sequence_length)]))
+                tmpYdiff = np.concatenate((np.array(shifted_classes_value[waves_indexes]), [0 for i in range(length, max_sequence_length)]))
             else:
                 tmpX = np.array(X[index][waves_indexes])
-                tmpX_ = np.array(shifted_classes[waves_indexes])
-            
+                tmpY = np.array(shifted_classes[waves_indexes])
+                tmpYdiff = np.array(shifted_classes_value[waves_indexes])
+
+            tmpYincr = [(1 if tmpYdiff[i] > 0 else 0) for i in range(len(tmpYdiff))]
             if length > 0:
                 newX.append(tmpX)
-                newX_.append(tmpX_)
+                newY.append(tmpY)
+                newYdiff.append(tmpYdiff)
+                newYincr.append(tmpYincr)
                 sequence_length.append(length)
-        return np.array(newX), np.array(newX_), np.array(sequence_length)
+        return np.array(newX), np.array(newY), np.array(newYdiff), np.array(newYincr), np.array(sequence_length)
     
     def add_noise(x, noise):
         shape = x.shape

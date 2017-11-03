@@ -31,8 +31,8 @@ attributes_num = len(e_values[0][0])
 classes_num = len(e_classes[0][0])
 
 max_sequence_length = np.max([len(e_values[0]),len(t_values[0])])
-e_values, e_classes, e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
-t_values, t_classes, t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
+e_values, e_classes, e_diffs, e_yesno, e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
+t_values, t_classes, t_diffs, t_yesno, t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
 
 #if(apply_reduction):
 #    selection = np.random.choice(len(svm_e_values), min(len(svm_e_values), len(svmt_values)), replace=False)
@@ -56,7 +56,7 @@ cost_mask = utils.get_cost_mask(rnn_classes)
 cost_mask /= np.mean(cost_mask)
 cost_mask = np.sqrt(cost_mask)
 #weights = skutils.compute_class_weight(class_weight='balanced', classes=np.array(range(10)), y=np.argmax(flat_classes, 1))
-
+'''
 #---------------------SVM------------------------
 print("---------------------SVM------------------------")
 
@@ -161,3 +161,4 @@ print("Error on training set:")
 sdae_svm.test(sdae_svm_train, flat_train[1])
 print("Error on test set:")
 sdae_svm.test(sdae_svm_test, flat_test[1])
+'''
