@@ -5,8 +5,9 @@ from utils import Utils as utils
 
 class Svm:
 
-    def __init__(self, cost_mask, loss='hinge', penalty='l2', alpha=0.0001, batch_size=1000):
-        self.cost_mask = dict(zip(range(10), cost_mask))
+    def __init__(self, output_size, cost_mask, loss='hinge', penalty='l2', alpha=0.0001, batch_size=1000):
+        self.cost_mask = dict(zip(range(output_size), cost_mask))
+        self.output_size = output_size
         self.batch_size = batch_size
         self.classifier = lm.SGDClassifier(max_iter=100, class_weight=self.cost_mask, loss=loss, penalty=penalty, alpha=alpha)
         
@@ -19,7 +20,7 @@ class Svm:
         batches = int(len(X) / self.batch_size)
         for i in range(batches):
             batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
-            self.classifier.partial_fit(batch_x, batch_y, np.array(range(10)))
+            self.classifier.partial_fit(batch_x, batch_y, np.array(range(self.output_size)))
 
     def test(self, X, Y):
         output_size = len(Y[0])

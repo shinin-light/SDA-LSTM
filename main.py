@@ -60,7 +60,7 @@ cost_mask = np.sqrt(cost_mask)
 #---------------------SVM------------------------
 print("---------------------SVM------------------------")
 
-svm = Svm(cost_mask=cost_mask)
+svm = Svm(cost_mask=cost_mask, output_size=classes_num)
 
 print("Training SVM...")
 svm.train(flat_train[0], flat_train[1])
@@ -74,7 +74,7 @@ print("---------------------LSTM-----------------------")
 
 input_size = len(rnn_values[0][0])
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
-            output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier',
+            output_size=classes_num, loss_function='weighted-sed-sparse-softmax-cross-entropy', initialization_function='xavier',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
             epochs=1, cost_mask=cost_mask, noise='gaussian')
 
@@ -137,7 +137,7 @@ sdae_lstm_train = sdae.timeseries_encode(rnn_train[0])
 sdae_lstm_test = sdae.timeseries_encode(rnn_test[0])
 input_size = len(sdae_lstm_train[0][0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
-            output_size=classes_num, loss_function='weighted-sparse-softmax-cross-entropy', initialization_function='xavier', 
+            output_size=classes_num, loss_function='weighted-sed-sparse-softmax-cross-entropy', initialization_function='xavier', 
             optimization_function='gradient-descent', learning_rate=0.01, learning_rate_decay='fraction', batch_size=32, 
             epochs=1, cost_mask=cost_mask)
 
@@ -153,7 +153,7 @@ print("--------------------SDAE-SVM--------------------")
 
 sdae_svm_train = sdae.encode(flat_train[0])
 sdae_svm_test = sdae.encode(flat_test[0])
-sdae_svm = Svm(cost_mask=cost_mask)
+sdae_svm = Svm(cost_mask=cost_mask, output_size=classes_num)
 
 print("Training SDAE-SVM...")
 sdae_svm.train(sdae_svm_train, flat_train[1])

@@ -49,7 +49,16 @@ class Utils:
             index = len(labels.shape) - 1
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, index))
             cross_entropy = tf.multiply(cross_entropy, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
-            cross_entropy = tf.multiply(cross_entropy, tf.cast(tf.maximum(tf.argmax(labels, index) - tf.argmax(logits, index), 1), dtype=tf.float32))
+            cross_entropy = tf.reduce_sum(cross_entropy, reduction_indices=1)
+            cross_entropy = tf.divide(cross_entropy, tf.cast(lengths, dtype=tf.float32))
+            return tf.reduce_mean(cross_entropy)
+        elif name == 'weighted-sed-sparse-softmax-cross-entropy':
+            assert lengths != None, "Specify lengths array."
+            assert cost_mask != None, "Specify cost mask array."
+            index = len(labels.shape) - 1
+            cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=tf.argmax(labels, index))
+            cross_entropy = tf.multiply(cross_entropy, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
+            cross_entropy = tf.multiply(cross_entropy, tf.cast(tf.square(tf.argmax(labels, index) - tf.argmax(logits, index)), dtype=tf.float32))
             cross_entropy = tf.reduce_sum(cross_entropy, reduction_indices=1)
             cross_entropy = tf.divide(cross_entropy, tf.cast(lengths, dtype=tf.float32))
             return tf.reduce_mean(cross_entropy)
