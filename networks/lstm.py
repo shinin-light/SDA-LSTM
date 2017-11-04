@@ -10,7 +10,7 @@ class Lstm:
         assert utils.noise_validator(self.noise) == True, "Invalid noise."
         #assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
-    def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, activation_function='tanh',
+    def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, accuracy_function, activation_function='tanh',
                 initialization_function='uniform', optimization_function='gradient-descent', epochs=10, learning_rate=0.01, 
                 learning_rate_decay='none', noise='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
         self.max_sequence_length = max_sequence_length
@@ -19,6 +19,7 @@ class Lstm:
         self.output_size = output_size
         self.activation_function = activation_function
         self.loss_function = loss_function
+        self.accuracy_function = accuracy_function
         self.initialization_function = initialization_function
         self.optimization_function = optimization_function
         self.epochs = epochs
@@ -28,8 +29,8 @@ class Lstm:
         self.noise = noise
         self.batch_size = batch_size
         self.scope_name = scope_name
-        if(not len(cost_mask) > 0 or not self.output_size > 0): #TODO handle output_size <= 0
-            cost_mask = np.ones(self.output_size)        
+        if(not len(cost_mask) > 0): #TODO handle output_size <= 0
+            cost_mask = np.ones(self.output_size, dtype=np.float32)        
         self.cost_mask = tf.reshape(tf.constant(np.tile(cost_mask, batch_size * max_sequence_length), dtype=tf.float32), (batch_size, max_sequence_length, output_size))
         self.assertions()
         self._create_model()
@@ -42,18 +43,18 @@ class Lstm:
             initializer = utils.get_initializater(self.initialization_function)
             activation = utils.get_activation(self.activation_function)
         
-            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer, activation=activation) #TODO check if all the gates are present
+            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
 
             outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
+            self.output = tf.nn.softmax(outputs)
 
-            self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function, lengths=self.sequence_length, cost_mask=self.cost_mask, max_length=self.max_sequence_length)
+            self.loss = utils.get_one_hot_loss(logits=outputs, labels=self.y, name=self.loss_function, cost_mask=self.cost_mask)
             self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
 
-            correct_prediction = tf.equal(tf.argmax(outputs, 2), tf.argmax(self.y, 2))
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+            self.accuracy = utils.get_accuracy(logits=self.output, labels=self.y, name=self.accuracy_function)
+        
             #Test
-            self.testLogits = tf.reshape(outputs, (-1, self.output_size))
+            self.testLogits = tf.reshape(self.output, (-1, self.output_size))
             self.testLabels = tf.reshape(self.y, (-1, self.output_size))
 
             #Saver

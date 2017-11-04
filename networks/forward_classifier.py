@@ -9,8 +9,8 @@ class ForwardClassifier:
         assert len(self.activation_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
         assert self.epochs > 0, "No. of epochs must be at least 1"
 
-    def __init__(self, input_size, output_size, dims, activation_functions, output_activation_function, loss_function, optimization_function='gradient-descent', epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
+    def __init__(self, input_size, output_size, dims, activation_functions, loss_function, accuracy_function, optimization_function='gradient-descent', epochs=10,
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default'):
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
@@ -18,14 +18,17 @@ class ForwardClassifier:
         self.learning_rate_decay = learning_rate_decay
         self.initial_learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.learning_rate, 0)
         self.loss_function = loss_function
+        self.accuracy_function = accuracy_function
         self.optimization_function = optimization_function
-        self.output_activation_function = output_activation_function
         self.activation_functions = activation_functions
         self.epochs = epochs
         self.dims = dims
         self.scope_name = scope_name
+        if(not len(cost_mask) > 0): #TODO handle output_size <= 0
+            cost_mask = np.ones(self.output_size, dtype=np.float32)  
+        self.cost_mask = tf.constant(cost_mask, dtype=tf.float32)
         self.assertions()
-        self.activation_functions.append(self.output_activation_function)
+        self.activation_functions.append('linear')
         self.depth = len(dims)
         self.weights, self.biases = [], []
         self._create_model()
@@ -57,17 +60,15 @@ class ForwardClassifier:
             for i in range(self.depth + 1):
                 activation = utils.get_activation(self.activation_functions[i])
                 outputs = activation(tf.matmul(outputs, self.weights[i]) + self.biases[i])
-            
-            self.output = outputs
+            self.output = tf.nn.softmax(outputs)
 
-            self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
+            self.loss = utils.get_one_hot_loss(logits=outputs, labels=self.y, name=self.loss_function, cost_mask=self.cost_mask)
             self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
 
-            correct_prediction = tf.equal(tf.argmax(self.output, 1), tf.argmax(self.y, 1))
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+            self.accuracy = utils.get_accuracy(logits=self.output, labels=self.y, name=self.accuracy_function)
+            
             #Test
-            self.testLogits = outputs
+            self.testLogits = self.output
             self.testLabels = self.y
 
             #Saver
