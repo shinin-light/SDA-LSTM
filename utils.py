@@ -19,6 +19,13 @@ class Utils:
             return tf.nn.relu
         raise BaseException("Invalid activation function.")
 
+    def get_output_activation(loss_function_name):
+        if 'sigmoid' in loss_function_name:
+            return tf.nn.sigmoid
+        elif 'softmax' in loss_function_name:
+            return tf.nn.softmax
+        return lambda x: x
+
     def get_accuracy(logits, labels, name):
         index = len(logits.shape) - 1
 
@@ -66,8 +73,6 @@ class Utils:
     def get_sdae_loss(logits, labels, name):
         if name == 'rmse':
             return tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(labels, logits))))
-        elif name == 'softmax-cross-entropy':
-            return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
         elif name == 'sigmoid-cross-entropy':
             return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
         raise BaseException("Invalid loss function.")
@@ -100,16 +105,15 @@ class Utils:
         result[result == 0] = -1
         return np.transpose(result)
 
-    def homogenize(X, Y, Yincr, ratio_threshold=1): #TODO: add also class0 records?
+    def homogenize(X, Y, ratio_threshold=1): #TODO: add also class0 records?
         assert ratio_threshold > 0 and ratio_threshold <= 1, "Invalid ratio threshold."
         class_num = len(Y[0])
         class_occurrences = np.int32(np.sum(Y, 0))
         class_max_occurrence = np.int32(np.max(class_occurrences) * ratio_threshold)
         class_indexes = [np.where((np.argmax(Y,1) == i) & (np.sum(Y,1) > 0)) for i in range(class_num)]
-        
+
         newX = []
         newY = []
-        newYincr = []
         for i in range(len(class_indexes)):
             if(class_occurrences[i] >= class_max_occurrence):
                 idx = range(class_occurrences[i])
@@ -120,9 +124,8 @@ class Utils:
             for j in idx:
                 newX.append(X[class_indexes[i][0][j]])
                 newY.append(Y[class_indexes[i][0][j]])
-                newYincr.append(Yincr[class_indexes][i][0][j])
 
-        return np.array(newX), np.array(newY), np.array(newYincr)
+        return np.array(newX), np.array(newY)
 
     def get_batch(X, Y, size): 
         assert size > 0, "Size should positive"

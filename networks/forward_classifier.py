@@ -60,7 +60,8 @@ class ForwardClassifier:
             for i in range(self.depth + 1):
                 activation = utils.get_activation(self.activation_functions[i])
                 outputs = activation(tf.matmul(outputs, self.weights[i]) + self.biases[i])
-            self.output = tf.nn.softmax(outputs)
+            output_activation = utils.get_output_activation(self.loss_function)
+            self.output = output_activation(outputs)
 
             self.loss = utils.get_one_hot_loss(logits=outputs, labels=self.y, name=self.loss_function, cost_mask=self.cost_mask)
             self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
