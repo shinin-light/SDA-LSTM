@@ -12,7 +12,6 @@ apply_reduction = True
 class_is_yesno = True
 
 #--------------------folders---------------------
-
 folders_file = './folders'
 folders  = open(folders_file, 'r').read().split('\n')
 for folder in folders:
@@ -57,7 +56,7 @@ else:
 
 rnn_train, rnn_test = utils.generate_rnn_train_test(rnn_values, rnn_labels, rnn_lengths, training_frac)
 
-flat_values, flat_labels = utils.homogenize(flat_values, flat_labels, 0.6)
+flat_values, flat_labels = utils.homogenize(flat_values, flat_labels, 0.3)
 flat_train, flat_test = utils.generate_flat_train_test(flat_values, flat_labels, training_frac)
 
 rnn_cost_mask = utils.get_cost_mask(rnn_labels)
@@ -68,8 +67,12 @@ flat_cost_mask /= np.mean(flat_cost_mask)
 
 #weights = skutils.compute_class_weight(class_weight='balanced', classes=np.array(range(10)), y=np.argmax(flat_classes, 1))
 
+alpha = 2
+
 input_size = len(rnn_train[0][0][0])
 output_size = len(rnn_train[1][0][0])
+rnn_hidden_size = (len(rnn_train[0])) / (alpha * (input_size + output_size))
+flat_hidden_size = (len(flat_train[0])) / (alpha * (input_size + output_size))
 
 #---------------------SDAE-----------------------
 print("---------------------SDAE-----------------------")
@@ -77,7 +80,7 @@ print("---------------------SDAE-----------------------")
 sdae_output_size = 50
 sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=input_size, dims=[150, 100, sdae_output_size], optimization_function='adam',
                         encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['linear', 'tanh', 'tanh'],
-                        noise=['mask-0.7','gaussian','gaussian'], epochs=1, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
+                        noise=['mask-0.7','gaussian','gaussian'], epochs=30, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
                         learning_rate=0.01, learning_rate_decay='fraction', batch_size=128)
 
 print("Training SDAE...")
@@ -89,7 +92,7 @@ sdae.finetune(flat_train[0])
 #---------------------SVM------------------------
 print("---------------------SVM------------------------")
 
-svm = Svm(cost_mask=flat_cost_mask, output_size=classes_num)
+svm = Svm(cost_mask=flat_cost_mask, output_size=output_size)
 
 print("Training SVM...")
 svm.train(flat_train[0], flat_train[1])
@@ -103,7 +106,7 @@ print("--------------------SDAE-SVM--------------------")
 
 sdae_svm_train = sdae.encode(flat_train[0])
 sdae_svm_test = sdae.encode(flat_test[0])
-sdae_svm = Svm(cost_mask=flat_cost_mask, output_size=classes_num)
+sdae_svm = Svm(cost_mask=flat_cost_mask, output_size=output_size)
 
 print("Training SDAE-SVM...")
 sdae_svm.train(sdae_svm_train, flat_train[1])
@@ -117,7 +120,7 @@ print("------------------CLASSIFIER--------------------")
 
 classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[100,40], learning_rate_decay='fraction', 
                             activation_functions=['tanh','tanh'], loss_function='weighted-sed-softmax-cross-entropy', cost_mask=flat_cost_mask,
-                            accuracy_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=1, learning_rate=0.05, batch_size=128)
+                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=30, learning_rate=0.05, batch_size=128)
 
 print("Training CLASSIFIER...")
 classifier.train(flat_train[0], flat_train[1])
@@ -133,7 +136,7 @@ sdae_classifier_train = sdae.encode(flat_train[0])
 sdae_classifier_test = sdae.encode(flat_test[0])
 sdae_classifier = ForwardClassifier(scope_name='sdae-forward', input_size=sdae_output_size, output_size=output_size, dims=[100,40], learning_rate_decay='fraction', 
                             activation_functions=['tanh','tanh'], loss_function='weighted-sed-softmax-cross-entropy', cost_mask=flat_cost_mask,
-                            accuracy_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=1, learning_rate=0.05, batch_size=128)
+                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=30, learning_rate=0.05, batch_size=128)
 
 print("Training SDAE-CLASSIFIER...")
 sdae_classifier.train(sdae_classifier_train, flat_train[1])
@@ -146,9 +149,9 @@ sdae_classifier.test(sdae_classifier_test, flat_test[1])
 print("---------------------LSTM-----------------------")
 
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
-            output_size=output_size, loss_function='weighted-sed-softmax-cross-entropy', initialization_function='xavier', accuracy_function='one-hot-accuracy',
+            output_size=output_size, loss_function='weighted-sed-softmax-cross-entropy', initialization_function='xavier', metric_function='binary-brier-score',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epochs=1, cost_mask=rnn_cost_mask, noise='gaussian')
+            epochs=1, cost_mask=rnn_cost_mask)
 
 print("Training LSTM...")
 lstm.train(rnn_train[0], rnn_train[1], rnn_train[2])
@@ -163,9 +166,9 @@ print("-------------------SDAE-LSTM--------------------")
 sdae_lstm_train = sdae.timeseries_encode(rnn_train[0])
 sdae_lstm_test = sdae.timeseries_encode(rnn_test[0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=sdae_output_size, state_size=50, 
-            output_size=output_size, loss_function='weighted-sed-softmax-cross-entropy', initialization_function='xavier', accuracy_function='one-hot-accuracy',
+            output_size=output_size, loss_function='weighted-sed-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epochs=1, cost_mask=rnn_cost_mask, noise='gaussian')
+            epochs=30, cost_mask=rnn_cost_mask, noise='gaussian')
 
 print("Training SDAE-LSTM...")
 sdae_lstm.train(sdae_lstm_train, rnn_train[1], rnn_train[2])

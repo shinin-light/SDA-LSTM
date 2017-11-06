@@ -104,12 +104,12 @@ class StackedAutoEncoder:
             self.layerwise_losses = []
             self.layerwise_optimizers = []
             for i in range(self.depth):
-                loss = utils.get_sdae_loss(logits=self.layerwise_decoded[self.depth - 1 - i], labels=self.x[i], name=self.loss_functions[i])
+                loss = utils.get_sdae_loss(logits=self.layerwise_decoded[self.depth - 1 - i], labels=self.y[i], name=self.loss_functions[i])
                 optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(loss)
                 self.layerwise_losses.append(loss)
                 self.layerwise_optimizers.append(optimizer)
 
-            self.finetuning_loss = utils.get_sdae_loss(logits=self.decoded_data, labels=self.x[0], name=self.loss_functions[0])
+            self.finetuning_loss = utils.get_sdae_loss(logits=self.decoded_data, labels=self.y[0], name=self.loss_functions[0])
             self.finetuning_optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.finetuning_loss)
 
             #Saver

@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from sklearn.metrics import roc_auc_score
 import math
 
 class Utils:
@@ -26,7 +27,7 @@ class Utils:
             return tf.nn.softmax
         return lambda x: x
 
-    def get_accuracy(logits, labels, name):
+    def get_metric(logits, labels, name):
         index = len(logits.shape) - 1
 
         logits = tf.reshape(logits, (-1, logits.shape[index]))
@@ -38,7 +39,47 @@ class Utils:
             return tf.reduce_mean(tf.cast(tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1)), tf.float32))
         elif name == 'rmsp':
             return tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(1 - labels, logits))))
-        raise BaseException("Invalid accuracy function.")
+        elif name == 'binary-brier-score':
+            new_logits = tf.slice(logits, [0, 1], [-1, 1])
+            new_labels = tf.slice(labels, [0, 1], [-1, 1])
+            return tf.reduce_mean(tf.square(tf.subtract(labels, logits)))
+        raise BaseException("Invalid metric function.")
+
+    def get_all_metrics(logits, labels):
+        index = len(labels.shape) - 1
+
+        logits = np.reshape(logits, (-1, logits.shape[index]))
+        labels = np.reshape(labels, (-1, labels.shape[index]))
+        logits = logits[np.where(labels > 0)[0]]
+        labels = labels[np.where(labels > 0)[0]]
+
+        results = {}
+        
+        results['one-hot-accuracy'] = np.mean(np.float32(np.argmax(logits, 1) == np.argmax(labels, 1)))
+        results['rmsp'] = np.sqrt(np.mean(np.square( (1 - labels) - logits)))
+        results['binary-brier-score'] = np.mean(np.square(labels[:,1:] - logits[:,1:]))
+        results['auc-roc'] = roc_auc_score(np.reshape(labels[:,1:], (-1)), np.reshape(logits[:,1:], (-1)))
+
+        confusion_matrix = [[0 for i in range(labels.shape[1])] for j in range(labels.shape[1])]
+        for i in range(len(labels)):
+            if np.sum(labels[i]) > 0:
+                label_idx = np.argmax(labels[i])
+                logit_idx = np.argmax(logits[i])
+                confusion_matrix[label_idx][logit_idx] += 1
+        results['confusion-matrix'] = confusion_matrix
+
+        real = np.sum(confusion_matrix, 1)
+        predicted = np.sum(confusion_matrix, 0)
+        total = np.sum(confusion_matrix)
+        
+        sum_classifier = 0
+        sum_prob_classifier = 0
+        for i in range(len(confusion_matrix)):
+            sum_classifier += confusion_matrix[i][i]
+            sum_prob_classifier += real[i] * predicted[i] / total
+        results['k-statistic'] = (sum_classifier - sum_prob_classifier) / (total - sum_prob_classifier)
+
+        return results
 
     def get_one_hot_loss(logits, labels, name, cost_mask=None):
         index = len(labels.shape) - 1
@@ -55,7 +96,7 @@ class Utils:
             logits = tf.nn.softmax(logits)
             rmse = tf.reduce_mean(tf.square(tf.subtract(labels, logits)), index)
             rmse = tf.multiply(rmse, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
-            rmse = tf.multiply(rmse, 1 + tf.square(tf.cast(tf.argmax(labels, index) - tf.argmax(logits, index), dtype=tf.float32)))
+            #rmse = tf.multiply(rmse, 1 + tf.square(tf.cast(tf.argmax(labels, index) - tf.argmax(logits, index), dtype=tf.float32)))
             rmse = tf.divide(tf.reduce_sum(rmse), total_length)
             return tf.sqrt(rmse)
         elif name == 'softmax-cross-entropy':
@@ -65,7 +106,7 @@ class Utils:
             
             cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
             cross_entropy = tf.multiply(cross_entropy, tf.reduce_sum(tf.multiply(cost_mask, labels), index))
-            cross_entropy = tf.multiply(cross_entropy, 1 + tf.square(tf.cast(tf.argmax(labels, index) - tf.argmax(logits, index), dtype=tf.float32)))
+            #cross_entropy = tf.multiply(cross_entropy, 1 + tf.square(tf.cast(tf.argmax(labels, index) - tf.argmax(logits, index), dtype=tf.float32)))
             cross_entropy = tf.divide(tf.reduce_sum(cross_entropy), total_length)
             return cross_entropy
         raise BaseException("Invalid loss function.")
