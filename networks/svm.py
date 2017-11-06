@@ -31,8 +31,13 @@ class Svm:
         outputs = self.classifier.predict(X)
         
         self.confusion_matrix = [[0 for i in range(output_size)] for j in range(output_size)]
+        
+        true_positives = 0
         for i in range(len(outputs)):
             self.confusion_matrix[Y[i]][outputs[i]] += 1
-
+            if Y[i] == outputs[i]:
+                true_positives += 1
+        
         [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i])), self.confusion_matrix[i]) for i in range(len(self.confusion_matrix))]
+        print("Total accuracy = {0:.2f}%".format(true_positives * 100 / np.sum(self.confusion_matrix)))
         return self.confusion_matrix

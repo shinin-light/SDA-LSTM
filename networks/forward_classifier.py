@@ -9,8 +9,8 @@ class ForwardClassifier:
         assert len(self.activation_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
         assert self.epochs > 0, "No. of epochs must be at least 1"
 
-    def __init__(self, input_size, output_size, dims, activation_functions, output_activation_function, loss_function, optimization_function='gradient-descent', epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
+    def __init__(self, input_size, output_size, dims, activation_functions, loss_function, metric_function, optimization_function='gradient-descent', epochs=10,
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default'):
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
@@ -18,14 +18,17 @@ class ForwardClassifier:
         self.learning_rate_decay = learning_rate_decay
         self.initial_learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.learning_rate, 0)
         self.loss_function = loss_function
+        self.metric_function = metric_function
         self.optimization_function = optimization_function
-        self.output_activation_function = output_activation_function
         self.activation_functions = activation_functions
         self.epochs = epochs
         self.dims = dims
         self.scope_name = scope_name
+        if(not len(cost_mask) > 0): #TODO handle output_size <= 0
+            cost_mask = np.ones(self.output_size, dtype=np.float32)  
+        self.cost_mask = tf.constant(cost_mask, dtype=tf.float32)
         self.assertions()
-        self.activation_functions.append(self.output_activation_function)
+        self.activation_functions.append('linear')
         self.depth = len(dims)
         self.weights, self.biases = [], []
         self._create_model()
@@ -57,17 +60,16 @@ class ForwardClassifier:
             for i in range(self.depth + 1):
                 activation = utils.get_activation(self.activation_functions[i])
                 outputs = activation(tf.matmul(outputs, self.weights[i]) + self.biases[i])
-            
-            self.output = outputs
+            output_activation = utils.get_output_activation(self.loss_function)
+            self.output = output_activation(outputs)
 
-            self.loss = utils.get_loss(logits=outputs, labels=self.y, name=self.loss_function)
+            self.loss = utils.get_one_hot_loss(logits=outputs, labels=self.y, name=self.loss_function, cost_mask=self.cost_mask)
             self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
 
-            correct_prediction = tf.equal(tf.argmax(self.output, 1), tf.argmax(self.y, 1))
-            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+            self.metric = utils.get_metric(logits=self.output, labels=self.y, name=self.metric_function)
+            
             #Test
-            self.testLogits = outputs
+            self.testLogits = self.output
             self.testLabels = self.y
 
             #Saver
@@ -86,31 +88,28 @@ class ForwardClassifier:
             sess.run(tf.global_variables_initializer())
             for epoch in range(epochs):
                 avg_loss = 0.
-                avg_accuracy = 0.
+                avg_metric = 0.
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y})
-                    loss, accuracy = sess.run([self.loss, self.accuracy], feed_dict={self.x: batch_x, self.y: batch_y})
+                    loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y})
                     avg_loss += loss
-                    avg_accuracy += accuracy
+                    avg_metric += metric
                 avg_loss /= batches_per_epoch
-                avg_accuracy /= batches_per_epoch
-                print('epoch {0}: loss = {1:.6f}, accuracy = {2:.2f}%'.format(epoch, avg_loss, avg_accuracy * 100))
+                avg_metric /= batches_per_epoch
+                print('epoch {0}: loss = {1:.6f}, metric ({2}) = {3:.6f}'.format(epoch, avg_loss, self.metric_function, avg_metric))
             self.saver.save(sess, './weights/forward/' + self.scope_name + '/checkpoint', global_step=0)
 
     def test(self, X, Y, samples_shown=1):
         with tf.Session() as sess:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/forward/' + self.scope_name))
-            self.confusion_matrix = [[0 for i in range(self.output_size)] for j in range(self.output_size)]
-            avg_loss, avg_accuracy, testLabels, testLogits = sess.run([self.loss, self.accuracy, self.testLabels, self.testLogits], feed_dict={self.x: X, self.y: Y})
+            avg_loss, labels, logits = sess.run([self.loss, self.testLabels, self.testLogits], feed_dict={self.x: X, self.y: Y})
 
-            for i in range(len(testLabels)):
-                if np.sum(testLabels[i]) > 0:
-                    label_idx = np.argmax(testLabels[i])
-                    logit_idx = np.argmax(testLogits[i])
-                    self.confusion_matrix[label_idx][logit_idx] += 1
+            print("Test: loss = {0:.6f}".format(avg_loss))
 
-            [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i])), self.confusion_matrix[i]) for i in range(len(self.confusion_matrix))]
-            print("Test: loss = {0:.6f}, accuracy = {1:.2f}%".format(avg_loss, avg_accuracy * 100))
-        return self.confusion_matrix
+            metrics = utils.get_all_metrics(logits=np.array(logits), labels=np.array(labels))
+            for m in metrics:
+                print('\t', m, ':', metrics[m])
+
+        return metrics
