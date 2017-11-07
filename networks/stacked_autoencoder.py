@@ -12,8 +12,9 @@ class StackedAutoEncoder:
         assert self.epochs > 0, "No. of epochs must be at least 1"
         assert utils.noise_validator(self.noise) == True, "Invalid noises."
 
-    def __init__(self, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epochs=10,
+    def __init__(self, printer, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epochs=10,
                  learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
+        self.printer = printer
         self.input_size = input_size
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -127,7 +128,7 @@ class StackedAutoEncoder:
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for layer in range(self.depth):
-                print('Layer {0}'.format(layer + 1))
+                self.printer.print('Layer {0}'.format(layer + 1))
                 tmp = np.copy(Y)
                 tmp = utils.add_noise(tmp, self.noise[layer])
                 X = tmp
@@ -140,12 +141,12 @@ class StackedAutoEncoder:
                         loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
                         avg_loss += loss
                     avg_loss /= batches_per_epoch
-                    print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
+                    self.printer.print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
                 Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X})
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
     def finetune(self, Y, epochs=None):
-        print('Fine Tuning')
+        self.printer.print('Fine Tuning')
 
         if epochs is None:
             epochs = self.epochs
@@ -165,7 +166,7 @@ class StackedAutoEncoder:
                     loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
                     avg_loss += loss
                 avg_loss /= batches_per_epoch
-                print('epoch {0}: loss = {1:.6f}'.format(epoch, avg_loss))
+                self.printer.print('epoch {0}: loss = {1:.6f}'.format(epoch, avg_loss))
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
     def encode(self, data):
@@ -187,8 +188,8 @@ class StackedAutoEncoder:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/sdae/' + self.scope_name))
             avg_loss, output = sess.run([self.finetuning_loss, self.output], feed_dict={self.x[0]: data})
             for i in np.random.choice(len(data), samples_shown):
-                print('Sample {0}'.format(i))
+                self.printer.print('Sample {0}'.format(i))
                 for d, d_ in zip(data[i], output[i]):
                     if(abs(d-d_) >= threshold):
-                        print('\tOriginal: {0:.2f} --- Reconstructed: {1:.2f} --- Difference: {2:.2f}'.format(d,d_,d-d_))
-            print("Test: loss = {0:.6f}".format(avg_loss))
+                        self.printer.print('\tOriginal: {0:.2f} --- Reconstructed: {1:.2f} --- Difference: {2:.2f}'.format(d,d_,d-d_))
+            self.printer.print("Test: loss = {0:.6f}".format(avg_loss))

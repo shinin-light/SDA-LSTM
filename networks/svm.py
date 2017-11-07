@@ -5,7 +5,8 @@ from utils import Utils as utils
 
 class Svm:
 
-    def __init__(self, output_size, cost_mask, loss='hinge', penalty='l2', alpha=0.0001, batch_size=1000):
+    def __init__(self, printer, output_size, cost_mask, loss='hinge', penalty='l2', alpha=0.0001, batch_size=1000):
+        self.printer = printer
         self.cost_mask = dict(zip(range(output_size), cost_mask))
         self.output_size = output_size
         self.batch_size = batch_size
@@ -38,6 +39,6 @@ class Svm:
             if Y[i] == outputs[i]:
                 true_positives += 1
         
-        [print("class {0}, accuracy = {1:.2f}, values =".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i])), self.confusion_matrix[i]) for i in range(len(self.confusion_matrix))]
-        print("Total accuracy = {0:.2f}%".format(true_positives * 100 / np.sum(self.confusion_matrix)))
+        [self.printer.print("class {0}, accuracy = {1:.2f}, values = {2}".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i]), self.confusion_matrix[i])) for i in range(len(self.confusion_matrix))]
+        self.printer.print("Total accuracy = {0:.2f}%".format(true_positives * 100 / np.sum(self.confusion_matrix)))
         return self.confusion_matrix

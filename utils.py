@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, brier_score_loss
 import math
 
 class Utils:
@@ -57,16 +57,20 @@ class Utils:
         
         results['one-hot-accuracy'] = np.mean(np.float32(np.argmax(logits, 1) == np.argmax(labels, 1)))
         results['rmsp'] = np.sqrt(np.mean(np.square( (1 - labels) - logits)))
-        results['binary-brier-score'] = np.mean(np.square(labels[:,1:] - logits[:,1:]))
-        results['auc-roc'] = roc_auc_score(np.reshape(labels[:,1:], (-1)), np.reshape(logits[:,1:], (-1)))
+        if len(labels[0]) == 2:
+            results['binary-brier-score'] = np.mean(np.square(labels[:,1:] - logits[:,1:]))
+
+        results['auc-roc'] = roc_auc_score(labels, logits) if len(labels[0]) == 2 else roc_auc_score(labels, logits, average='weighted')
 
         confusion_matrix = [[0 for i in range(labels.shape[1])] for j in range(labels.shape[1])]
+        emd = 0
         for i in range(len(labels)):
-            if np.sum(labels[i]) > 0:
-                label_idx = np.argmax(labels[i])
-                logit_idx = np.argmax(logits[i])
-                confusion_matrix[label_idx][logit_idx] += 1
+            label_idx = np.argmax(labels[i])
+            logit_idx = np.argmax(logits[i])
+            confusion_matrix[label_idx][logit_idx] += 1
+            emd += abs(label_idx - logit_idx)
         results['confusion-matrix'] = confusion_matrix
+        emd /= len(labels)
 
         real = np.sum(confusion_matrix, 1)
         predicted = np.sum(confusion_matrix, 0)
@@ -78,6 +82,8 @@ class Utils:
             sum_classifier += confusion_matrix[i][i]
             sum_prob_classifier += real[i] * predicted[i] / total
         results['k-statistic'] = (sum_classifier - sum_prob_classifier) / (total - sum_prob_classifier)
+
+        results['emd'] = emd
 
         return results
 

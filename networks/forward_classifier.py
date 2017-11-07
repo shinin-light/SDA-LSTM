@@ -9,8 +9,9 @@ class ForwardClassifier:
         assert len(self.activation_functions) == len(self.dims), "No. of activations must equal to no. of hidden layers"
         assert self.epochs > 0, "No. of epochs must be at least 1"
 
-    def __init__(self, input_size, output_size, dims, activation_functions, loss_function, metric_function, optimization_function='gradient-descent', epochs=10,
+    def __init__(self, printer, input_size, output_size, dims, activation_functions, loss_function, metric_function, optimization_function='gradient-descent', epochs=10,
                  learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default'):
+        self.printer = printer
         self.input_size = input_size
         self.output_size = output_size
         self.batch_size = batch_size
@@ -98,7 +99,7 @@ class ForwardClassifier:
                     avg_metric += metric
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
-                print('epoch {0}: loss = {1:.6f}, metric ({2}) = {3:.6f}'.format(epoch, avg_loss, self.metric_function, avg_metric))
+                self.printer.print('epoch {0}: loss = {1:.6f}, {2} = {3:.6f}'.format(epoch, avg_loss, self.metric_function, avg_metric))
             self.saver.save(sess, './weights/forward/' + self.scope_name + '/checkpoint', global_step=0)
 
     def test(self, X, Y, samples_shown=1):
@@ -106,10 +107,10 @@ class ForwardClassifier:
             self.saver.restore(sess, tf.train.latest_checkpoint('./weights/forward/' + self.scope_name))
             avg_loss, labels, logits = sess.run([self.loss, self.testLabels, self.testLogits], feed_dict={self.x: X, self.y: Y})
 
-            print("Test: loss = {0:.6f}".format(avg_loss))
+            self.printer.print("Test: loss = {0:.6f}".format(avg_loss))
 
             metrics = utils.get_all_metrics(logits=np.array(logits), labels=np.array(labels))
             for m in metrics:
-                print('\t', m, ':', metrics[m])
+                self.printer.print('\t {0}: {1}'.format(m, metrics[m]))
 
         return metrics

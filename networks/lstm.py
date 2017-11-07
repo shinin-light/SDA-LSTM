@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from utils import Utils as utils
+from printer import Printer as printer
 from tensorflow.contrib import rnn
 
 class Lstm:
@@ -10,9 +11,10 @@ class Lstm:
         assert utils.noise_validator(self.noise) == True, "Invalid noise."
         #assert self.cost_mask.shape[0] == self.output_size, "Invalid cost mask length."
 
-    def __init__(self, max_sequence_length, input_size, state_size, output_size, loss_function, metric_function, activation_function='tanh',
+    def __init__(self, printer, max_sequence_length, input_size, state_size, output_size, loss_function, metric_function, activation_function='tanh',
                 initialization_function='uniform', optimization_function='gradient-descent', epochs=10, learning_rate=0.01, 
                 learning_rate_decay='none', noise='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
+        self.printer = printer
         self.max_sequence_length = max_sequence_length
         self.input_size = input_size
         self.state_size = state_size
@@ -85,7 +87,7 @@ class Lstm:
                     avg_metric += metric
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
-                print("Epoch {0}: loss = {1:.6f}, metric ({2}) = {3:.6f}".format(epoch, avg_loss, self.metric_function, avg_metric))
+                self.printer.print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.6f}".format(epoch, avg_loss, avg_metric))
             self.saver.save(sess, './weights/lstm/' + self.scope_name + '/checkpoint', global_step=0)
     
     def test(self, X, Y, lengths):
@@ -105,10 +107,10 @@ class Lstm:
                 avg_loss += loss
             
             avg_loss /= batches_per_epoch
-            print("Test: loss = {0:.6f}".format(avg_loss))
+            self.printer.print("Test: loss = {0:.6f}".format(avg_loss))
 
             metrics = utils.get_all_metrics(logits=np.array(logits), labels=np.array(labels))
             for m in metrics:
-                print('\t', m, ':', metrics[m])
+                self.printer.print('\t {0}: {1}'.format(m, metrics[m]))
         return metrics
 

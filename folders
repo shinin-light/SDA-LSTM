@@ -9,3 +9,4 @@ logs/lstm
 logs/sdae
 logs/svm
 logs/forward
+results
