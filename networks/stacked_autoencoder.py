@@ -13,7 +13,7 @@ class StackedAutoEncoder:
         assert utils.noise_validator(self.noise) == True, "Invalid noises."
 
     def __init__(self, printer, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default'):
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default', initialization_function='xavier'):
         self.printer = printer
         self.input_size = input_size
         self.batch_size = batch_size
@@ -29,6 +29,7 @@ class StackedAutoEncoder:
         self.dims = dims
         self.depth = len(dims)
         self.scope_name = scope_name
+        self.initialization_function = initialization_function
         self.weights, self.biases, self.decoding_biases = [], [], []
         self.assertions()
         self._create_model()
@@ -55,12 +56,14 @@ class StackedAutoEncoder:
             self.encoded = [] #ENC1(X), ENC2(ENC1(X)), ENC3(ENC2(ENC1(X))) => ENCODED
             self.decoded = [] #DEC3(ENCODED), DEC2(DEC3(ENCODED)), DEC1(DEC2(DEC3(ENCODED)))
 
+            initializer = utils.get_initializer(self.initialization_function)
+
             previous_size = self.input_size
             for i in range(self.depth):
                 hidden_size = self.dims[i]
-
-                encoding_weights = tf.Variable(tf.truncated_normal([previous_size, hidden_size], dtype=tf.float32))
-                encoding_biases = tf.Variable(tf.truncated_normal([hidden_size], dtype=tf.float32))
+                
+                encoding_weights = tf.get_variable('w' + str(i), shape=[previous_size, hidden_size], initializer=initializer, dtype=tf.float32)
+                encoding_biases = tf.get_variable('eb' + str(i), shape=[hidden_size], initializer=initializer, dtype=tf.float32)
                 encoding_function = utils.get_activation(self.encoding_functions[i])
 
                 self.weights.append(encoding_weights)
@@ -80,7 +83,7 @@ class StackedAutoEncoder:
                 hidden_size = self.dims[i - 1] if i > 0 else self.input_size
 
                 decoding_weights = tf.transpose(self.weights[i])
-                decoding_biases = tf.Variable(tf.truncated_normal([hidden_size], dtype=tf.float32))
+                decoding_biases = tf.get_variable('db' + str(i), shape=[hidden_size], initializer=initializer, dtype=tf.float32)
                 decoding_function = utils.get_activation(self.decoding_functions[i])
 
                 self.weights.append(decoding_weights)
@@ -116,11 +119,31 @@ class StackedAutoEncoder:
             #Saver
             self.saver = tf.train.Saver()
             
+            self.merged_summary = []
+            finetuning_summary = []
             #Tensorboard
-            #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
+            for i in range(self.depth):
+                wg = tf.summary.histogram("weights-gradient-" + str(i), tf.gradients(self.layerwise_losses[i], [self.weights[i]]))
+                ebg = tf.summary.histogram("encoding-biases-gradient-" + str(i), tf.gradients(self.layerwise_losses[i], [self.biases[i]]))
+                dbg = tf.summary.histogram("decoding-biases-gradient-" + str(i), tf.gradients(self.layerwise_losses[i], [self.biases[self.depth * 2 - 1 - i]]))
+                
+                finetuning_summary.append(tf.summary.histogram("weights-finetuning-gradient-" + str(i), tf.gradients(self.finetuning_loss, [self.weights[i]])))
+                finetuning_summary.append(tf.summary.histogram("encoding-biases-finetuning-gradient-" + str(i), tf.gradients(self.finetuning_loss, [self.biases[i]])))
+                finetuning_summary.append(tf.summary.histogram("decoding-biases-finetuning-gradient-" + str(i), tf.gradients(self.finetuning_loss, [self.biases[self.depth * 2 - 1 - i]])))
+                
+                w = tf.summary.histogram("weights-" + str(i), self.weights[i])
+                eb = tf.summary.histogram("encoding-biases-" + str(i), self.biases[i])
+                db = tf.summary.histogram("decoding-biases-" + str(i), self.biases[self.depth * 2 - 1 - i])
+                self.merged_summary.append(tf.summary.merge([wg,ebg,dbg,w,eb,db]))
+
+                finetuning_summary.append([w, eb, db])
+            self.finetuning_merged_summary = tf.summary.merge(finetuning_summary)
+
+            self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\sdae", graph=tf.get_default_graph())
 
     def train(self, Y, epochs=None):
         batches_per_epoch = int(len(Y) / self.batch_size)
+        self.global_step = 0
 
         if epochs is None:
             epochs = self.epochs
@@ -138,8 +161,11 @@ class StackedAutoEncoder:
                     for i in range(batches_per_epoch):
                         batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                         sess.run(self.layerwise_optimizers[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
-                        loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
+                        loss, summary = sess.run([self.layerwise_losses[layer], self.merged_summary[layer]], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
                         avg_loss += loss
+                        
+                        self.global_step += 1
+                        self.writer.add_summary(summary, global_step=self.global_step)
                     avg_loss /= batches_per_epoch
                     self.printer.print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
                 Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X})
@@ -163,8 +189,11 @@ class StackedAutoEncoder:
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                     sess.run(self.finetuning_optimizer, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
-                    loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
+                    loss, summary = sess.run([self.finetuning_loss, self.finetuning_merged_summary], feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
                     avg_loss += loss
+
+                    self.global_step += 1
+                    self.writer.add_summary(summary, global_step=self.global_step)
                 avg_loss /= batches_per_epoch
                 self.printer.print('epoch {0}: loss = {1:.6f}'.format(epoch, avg_loss))
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)

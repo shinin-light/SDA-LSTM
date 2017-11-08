@@ -10,7 +10,7 @@ class ForwardClassifier:
         assert self.epochs > 0, "No. of epochs must be at least 1"
 
     def __init__(self, printer, input_size, output_size, dims, activation_functions, loss_function, metric_function, optimization_function='gradient-descent', epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default'):
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default', initialization_function='xavier'):
         self.printer = printer
         self.input_size = input_size
         self.output_size = output_size
@@ -21,10 +21,11 @@ class ForwardClassifier:
         self.loss_function = loss_function
         self.metric_function = metric_function
         self.optimization_function = optimization_function
-        self.activation_functions = activation_functions
+        self.activation_functions = activation_functions[:]
         self.epochs = epochs
         self.dims = dims
         self.scope_name = scope_name
+        self.initialization_function = initialization_function
         if(not len(cost_mask) > 0): #TODO handle output_size <= 0
             cost_mask = np.ones(self.output_size, dtype=np.float32)  
         self.cost_mask = tf.constant(cost_mask, dtype=tf.float32)
@@ -39,18 +40,20 @@ class ForwardClassifier:
             self.x = tf.placeholder(dtype=tf.float32, shape=[None, self.input_size], name='x')
             self.y = tf.placeholder(dtype=tf.float32, shape=[None, self.output_size], name='y')
             
+            initializer = utils.get_initializer(self.initialization_function)
+
             if(self.depth > 0):
                 hidden_size = self.dims[0]
             else:
-                hidden_size = output_size
+                hidden_size = self.output_size
             previous_size = self.input_size
 
             self.weights, self.biases = [],[]
 
             for i in range(self.depth + 1):
-                self.weights.append(tf.Variable(tf.truncated_normal([previous_size, hidden_size], dtype=tf.float32)))
-                self.biases.append(tf.Variable(tf.truncated_normal([hidden_size],dtype=tf.float32)))
-
+                self.weights.append(tf.get_variable('w' + str(i), shape=[previous_size, hidden_size], initializer=initializer, dtype=tf.float32))
+                self.biases.append(tf.get_variable('b' + str(i), shape=[hidden_size], initializer=initializer, dtype=tf.float32))
+      
                 previous_size = hidden_size
                 if(i < self.depth - 1):
                     hidden_size = self.dims[i+1]
@@ -77,10 +80,17 @@ class ForwardClassifier:
             self.saver = tf.train.Saver()
 
             #Tensorboard
-            #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
+            for i in range(self.depth + 1):
+                tf.summary.histogram("weights-gradient-" + str(i), tf.gradients(self.loss, [self.weights[i]]))
+                tf.summary.histogram("biases-gradient-" + str(i), tf.gradients(self.loss, [self.biases[i]]))
+                tf.summary.histogram("weights-" + str(i), self.weights[i])
+                tf.summary.histogram("biases-" + str(i), self.biases[i])
+            self.merged_summary = tf.summary.merge_all()
+            self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\forward", graph=tf.get_default_graph())
 
     def train(self, X, Y, epochs=None):
         batches_per_epoch = int(len(X) / self.batch_size)
+        self.global_step = 0
 
         if epochs is None:
             epochs = self.epochs
@@ -94,9 +104,12 @@ class ForwardClassifier:
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y})
-                    loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y})
+                    loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y})
                     avg_loss += loss
                     avg_metric += metric
+
+                    self.global_step += 1
+                    self.writer.add_summary(summary, global_step=self.global_step)
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
                 self.printer.print('epoch {0}: loss = {1:.6f}, {2} = {3:.6f}'.format(epoch, avg_loss, self.metric_function, avg_metric))

@@ -42,12 +42,12 @@ class Lstm:
             self.x = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.input_size]) #batch - timeseries - input vector
             self.y = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.output_size]) #batch - timeseries - class vector
             self.sequence_length = tf.placeholder(tf.int32, [self.batch_size])
-            initializer = utils.get_initializater(self.initialization_function)
+            initializer = utils.get_initializer(self.initialization_function)
             activation = utils.get_activation(self.activation_function)
         
             cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
 
-            outputs, _ = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
+            outputs, status = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
             output_activation = utils.get_output_activation(self.loss_function)
             self.output = output_activation(outputs)
 
@@ -64,10 +64,17 @@ class Lstm:
             self.saver = tf.train.Saver()
         
             #Tensorboard
-            #writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs", graph=tf.get_default_graph())
+            tf.summary.histogram("weights", cell.weights[0])
+            tf.summary.histogram("biases", cell.weights[1])
+            tf.summary.histogram("output", cell.weights[2])
+            tf.summary.histogram("weights-gradient", tf.gradients(self.loss, [cell.weights[0]]))
+            tf.summary.histogram("biases-gradient", tf.gradients(self.loss, [cell.weights[1]]))
+            self.merged_summary = tf.summary.merge_all()
+            self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\lstm", graph=tf.get_default_graph())
     
     def train(self, X, Y, lengths, epochs=None):
         batches_per_epoch = int(len(X) / self.batch_size)
+        self.global_step = 0
 
         if epochs is None:
             epochs = self.epochs
@@ -82,9 +89,12 @@ class Lstm:
                     batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
                     batch_x = utils.add_noise(batch_x, self.noise)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
-                    loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                    loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
                     avg_loss += loss
                     avg_metric += metric
+
+                    self.global_step += 1
+                    self.writer.add_summary(summary, global_step=self.global_step)
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
                 self.printer.print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.6f}".format(epoch, avg_loss, avg_metric))

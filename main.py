@@ -77,16 +77,15 @@ flat_hidden_size = (len(flat_train[0])) / (alpha * (input_size + output_size))
 
 #--------------------printer---------------------
 
-printer = Printer("results/output", True)
-printer.open()
-
+printer = Printer()
+'''
 #---------------------SDAE-----------------------
 printer.print("---------------------SDAE-----------------------")
 
 sdae_output_size = 50
 sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=input_size, dims=[150, 100, sdae_output_size], optimization_function='adam',
                         encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['linear', 'tanh', 'tanh'],
-                        noise=['mask-0.7','gaussian','gaussian'], epochs=1, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
+                        noise=['mask-0.7','gaussian','gaussian'], epochs=5, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
                         learning_rate=0.01, learning_rate_decay='fraction', batch_size=128, printer=printer)
 
 printer.print("Training SDAE...")
@@ -151,14 +150,14 @@ printer.print("Error on training set:")
 sdae_classifier.test(sdae_classifier_train, flat_train[1])
 printer.print("Error on test set:")
 sdae_classifier.test(sdae_classifier_test, flat_test[1])
-
+'''
 #---------------------LSTM-----------------------
 printer.print("---------------------LSTM-----------------------")
 
 lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
-            output_size=output_size, loss_function='weighted-sed-softmax-cross-entropy', initialization_function='xavier', metric_function='binary-brier-score',
-            optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epochs=1, cost_mask=rnn_cost_mask, noise='none', printer=printer)
+            output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='binary-brier-score',
+            optimization_function='gradient-descent', learning_rate=0.1, learning_rate_decay='none', batch_size=32, 
+            epochs=10, cost_mask=rnn_cost_mask, noise='none', printer=printer)
 
 printer.print("Training LSTM...")
 lstm.train(rnn_train[0], rnn_train[1], rnn_train[2])
@@ -166,7 +165,7 @@ printer.print("Error on training set:")
 lstm.test(rnn_train[0], rnn_train[1], rnn_train[2])
 printer.print("Error on test set:")
 lstm.test(rnn_test[0], rnn_test[1], rnn_test[2])
-
+'''
 #-------------------SDAE-LSTM--------------------
 printer.print("-------------------SDAE-LSTM--------------------")
 
@@ -183,5 +182,4 @@ printer.print("Error on training set:")
 sdae_lstm.test(sdae_lstm_train, rnn_train[1], rnn_train[2])
 printer.print("Error on test set:")
 sdae_lstm.test(sdae_lstm_test, rnn_test[1], rnn_test[2])
-
-printer.close()
+'''

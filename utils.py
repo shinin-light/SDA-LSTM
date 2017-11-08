@@ -96,7 +96,7 @@ class Utils:
         if name == 'softmax-rmse':
             logits = tf.nn.softmax(logits)
             return tf.sqrt(tf.reduce_sum(tf.square(tf.subtract(labels, logits))) / total_length)
-        elif name == 'weighted-sed-softmax-rmse':
+        elif name == 'weighted-softmax-rmse':
             assert cost_mask is not None, "Specify a valid cost mask array."
 
             logits = tf.nn.softmax(logits)
@@ -107,7 +107,7 @@ class Utils:
             return tf.sqrt(rmse)
         elif name == 'softmax-cross-entropy':
             return tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)) / total_length
-        elif name == 'weighted-sed-softmax-cross-entropy':
+        elif name == 'weighted-softmax-cross-entropy':
             assert cost_mask is not None, "Specify a valid cost mask array."
             
             cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
@@ -124,11 +124,13 @@ class Utils:
             return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels))
         raise BaseException("Invalid loss function.")
 
-    def get_initializater(name):
+    def get_initializer(name):
         if name == 'uniform':
             return tf.random_uniform_initializer(-1, 1)
         elif name == 'xavier':
             return tf.contrib.layers.xavier_initializer()
+        elif name == 'truncated-normal':
+            return tf.initializers.truncated_normal()
         raise BaseException("Invalid initializer.")
 
     def get_optimizer(name, learning_rate):
