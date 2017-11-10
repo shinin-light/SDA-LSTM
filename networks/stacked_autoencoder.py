@@ -141,7 +141,7 @@ class StackedAutoEncoder:
 
             self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\sdae", graph=tf.get_default_graph())
 
-    def train(self, Y, epochs=None):
+    def train(self, Y, epochs=None, debug=False):
         batches_per_epoch = int(len(Y) / self.batch_size)
         self.global_step = 0
 
@@ -161,17 +161,20 @@ class StackedAutoEncoder:
                     for i in range(batches_per_epoch):
                         batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                         sess.run(self.layerwise_optimizers[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
-                        loss, summary = sess.run([self.layerwise_losses[layer], self.merged_summary[layer]], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
+                        if debug:
+                            loss, summary = sess.run([self.layerwise_losses[layer], self.merged_summary[layer]], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
+                            self.writer.add_summary(summary, global_step=self.global_step)
+                        else:
+                            loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
                         avg_loss += loss
                         
                         self.global_step += 1
-                        self.writer.add_summary(summary, global_step=self.global_step)
                     avg_loss /= batches_per_epoch
                     self.printer.print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
                 Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X})
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
-    def finetune(self, Y, epochs=None):
+    def finetune(self, Y, epochs=None, debug=False):
         self.printer.print('Fine Tuning')
 
         if epochs is None:
@@ -189,11 +192,13 @@ class StackedAutoEncoder:
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                     sess.run(self.finetuning_optimizer, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
-                    loss, summary = sess.run([self.finetuning_loss, self.finetuning_merged_summary], feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
+                    if debug:
+                        loss, summary = sess.run([self.finetuning_loss, self.finetuning_merged_summary], feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
+                        self.writer.add_summary(summary, global_step=self.global_step)
+                    else:
+                        loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
                     avg_loss += loss
-
                     self.global_step += 1
-                    self.writer.add_summary(summary, global_step=self.global_step)
                 avg_loss /= batches_per_epoch
                 self.printer.print('epoch {0}: loss = {1:.6f}'.format(epoch, avg_loss))
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)

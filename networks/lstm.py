@@ -72,7 +72,7 @@ class Lstm:
             self.merged_summary = tf.summary.merge_all()
             self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\lstm", graph=tf.get_default_graph())
     
-    def train(self, X, Y, lengths, epochs=None):
+    def train(self, X, Y, lengths, epochs=None, debug=False):
         batches_per_epoch = int(len(X) / self.batch_size)
         self.global_step = 0
 
@@ -89,12 +89,15 @@ class Lstm:
                     batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
                     batch_x = utils.add_noise(batch_x, self.noise)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
-                    loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                    if debug:
+                        loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                        self.writer.add_summary(summary, global_step=self.global_step)
+                    else:
+                        loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
                     avg_loss += loss
                     avg_metric += metric
 
-                    self.global_step += 1
-                    self.writer.add_summary(summary, global_step=self.global_step)
+                    self.global_step += 1                        
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
                 self.printer.print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.6f}".format(epoch, avg_loss, avg_metric))

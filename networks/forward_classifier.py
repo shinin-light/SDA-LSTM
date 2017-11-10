@@ -88,7 +88,7 @@ class ForwardClassifier:
             self.merged_summary = tf.summary.merge_all()
             self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\forward", graph=tf.get_default_graph())
 
-    def train(self, X, Y, epochs=None):
+    def train(self, X, Y, epochs=None, debug=False):
         batches_per_epoch = int(len(X) / self.batch_size)
         self.global_step = 0
 
@@ -104,12 +104,15 @@ class ForwardClassifier:
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y})
-                    loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y})
+                    if debug:
+                        loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y})
+                        self.writer.add_summary(summary, global_step=self.global_step)
+                    else:
+                        loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y})
                     avg_loss += loss
                     avg_metric += metric
 
                     self.global_step += 1
-                    self.writer.add_summary(summary, global_step=self.global_step)
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
                 self.printer.print('epoch {0}: loss = {1:.6f}, {2} = {3:.6f}'.format(epoch, avg_loss, self.metric_function, avg_metric))
