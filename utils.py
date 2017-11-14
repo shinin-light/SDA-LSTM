@@ -154,8 +154,27 @@ class Utils:
         result[result == 0] = -1
         return np.transpose(result)
 
+    def reduce_classes_linear(Y, number):
+        index = len(Y.shape) - 1
+        new_shape = Y.shape[:-1] + (number,)
+        old_number = Y.shape[index]
+
+        Y = np.reshape(Y, (-1, old_number))
+        newY = []
+        for y in Y:
+            if np.sum(y) > 0:
+                newindex = int(np.argmax(y) / old_number * number)
+                newy = np.zeros(number)
+                newy[newindex] = 1
+            else:
+                newy = np.zeros(number)
+            newY.append(newy)
+        newY = np.array(newY, dtype=np.float32)
+        newY = np.reshape(newY, new_shape)
+        return newY
+        
     def homogenize(X, Y, ratio_threshold=1): #TODO: add also class0 records?
-        assert ratio_threshold > 0 and ratio_threshold <= 1, "Invalid ratio threshold."
+        assert ratio_threshold >= 0 and ratio_threshold <= 1, "Invalid ratio threshold."
         class_num = len(Y[0])
         class_occurrences = np.int32(np.sum(Y, 0))
         class_max_occurrence = np.int32(np.max(class_occurrences) * ratio_threshold)

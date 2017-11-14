@@ -45,9 +45,14 @@ class Lstm:
             initializer = utils.get_initializer(self.initialization_function)
             activation = utils.get_activation(self.activation_function)
         
-            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
+            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, initializer=initializer) #TODO check if all the gates are present
+            #cell = tf.contrib.rnn.LayerNormBasicLSTMCell(num_units=self.state_size) #TODO check if all the gates are present
 
             outputs, status = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
+
+            weights = tf.get_variable('weights', shape=[self.state_size, self.output_size], initializer=initializer, dtype=tf.float32)
+            outputs = tf.reshape(tf.matmul(tf.reshape(outputs, (-1, self.state_size)), weights), (self.batch_size, self.max_sequence_length, self.output_size))
+            
             output_activation = utils.get_output_activation(self.loss_function)
             self.output = output_activation(outputs)
 
@@ -66,7 +71,8 @@ class Lstm:
             #Tensorboard
             tf.summary.histogram("weights", cell.weights[0])
             tf.summary.histogram("biases", cell.weights[1])
-            tf.summary.histogram("output", cell.weights[2])
+            #tf.summary.histogram("output", cell.weights[2])
+            tf.summary.histogram("output", weights)
             tf.summary.histogram("weights-gradient", tf.gradients(self.loss, [cell.weights[0]]))
             tf.summary.histogram("biases-gradient", tf.gradients(self.loss, [cell.weights[1]]))
             self.merged_summary = tf.summary.merge_all()

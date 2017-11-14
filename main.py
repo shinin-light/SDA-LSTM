@@ -11,6 +11,7 @@ import os
 training_frac = 0.8
 apply_reduction = True
 class_is_yesno = True
+class_reduction = 5
 
 #--------------------folders---------------------
 folders_file = './folders'
@@ -27,6 +28,10 @@ t_classes = np.load("./data/t_classes.npy")
 
 e_values = np.concatenate((e_values, e_classes), axis=2)
 t_values = np.concatenate((t_values, t_classes), axis=2)
+
+if not class_is_yesno and class_reduction is not None:
+    e_classes = utils.reduce_classes_linear(e_classes, class_reduction)
+    t_classes = utils.reduce_classes_linear(t_classes, class_reduction)
 
 attributes_num = len(e_values[0][0])
 classes_num = len(e_classes[0][0])
@@ -57,8 +62,14 @@ else:
 
 rnn_train, rnn_test = utils.generate_rnn_train_test(rnn_values, rnn_labels, rnn_lengths, training_frac)
 
-flat_values, flat_labels = utils.homogenize(flat_values, flat_labels, 0.3)
+flat_values, flat_labels = utils.homogenize(flat_values, flat_labels, 0) #just remove the invalid records.
+
 flat_train, flat_test = utils.generate_flat_train_test(flat_values, flat_labels, training_frac)
+
+sdae_train_values, sdae_train_labels = utils.homogenize(flat_train[0], flat_train[1], 1) #balancing sdae training values.
+sdae_test_values, sdae_test_labels = utils.homogenize(flat_test[0], flat_test[1], 1) #balancing sdae test values.
+sdae_train = np.concatenate((sdae_train_values, sdae_test_values))
+sdae_finetuning_train = sdae_train_values
 
 rnn_cost_mask = utils.get_cost_mask(rnn_labels)
 rnn_cost_mask /= np.mean(rnn_cost_mask)
@@ -78,20 +89,20 @@ flat_hidden_size = (len(flat_train[0])) / (alpha * (input_size + output_size))
 #--------------------printer---------------------
 
 printer = Printer()
-'''
+
 #---------------------SDAE-----------------------
 printer.print("---------------------SDAE-----------------------")
 
 sdae_output_size = 50
 sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=input_size, dims=[150, 100, sdae_output_size], optimization_function='adam',
                         encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['linear', 'tanh', 'tanh'],
-                        noise=['mask-0.7','gaussian','gaussian'], epochs=5, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
+                        noise=['mask-0.7','gaussian','gaussian'], epochs=1, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
                         learning_rate=0.01, learning_rate_decay='fraction', batch_size=128, printer=printer)
 
 printer.print("Training SDAE...")
-sdae.train(flat_values)
+sdae.train(sdae_train)
 printer.print("Finetuning SDAE...")
-sdae.finetune(flat_train[0])
+sdae.finetune(sdae_finetuning_train)
 #sdae.test(flat_test[0], 1, threshold=0.1)
 
 #---------------------SVM------------------------
@@ -123,9 +134,9 @@ sdae_svm.test(sdae_svm_test, flat_test[1])
 #------------------CLASSIFIER--------------------
 printer.print("------------------CLASSIFIER--------------------")
 
-classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[100,40], learning_rate_decay='fraction', 
-                            activation_functions=['tanh','tanh'], loss_function='weighted-sed-softmax-cross-entropy', cost_mask=flat_cost_mask,
-                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=1, learning_rate=0.05, batch_size=128, 
+classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[100], learning_rate_decay='fraction', 
+                            activation_functions=['sigmoid'], loss_function='weighted-softmax-cross-entropy', cost_mask=flat_cost_mask,
+                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=1, learning_rate=0.1, batch_size=64, 
                             printer=printer)
 
 printer.print("Training CLASSIFIER...")
@@ -141,7 +152,7 @@ printer.print("----------------SDAE-CLASSIFIER-----------------")
 sdae_classifier_train = sdae.encode(flat_train[0])
 sdae_classifier_test = sdae.encode(flat_test[0])
 sdae_classifier = ForwardClassifier(scope_name='sdae-forward', input_size=sdae_output_size, output_size=output_size, dims=[100,40], learning_rate_decay='fraction', 
-                            activation_functions=['tanh','tanh'], loss_function='weighted-sed-softmax-cross-entropy', cost_mask=flat_cost_mask,
+                            activation_functions=['tanh','tanh'], loss_function='weighted-softmax-cross-entropy', cost_mask=flat_cost_mask,
                             metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=1, learning_rate=0.05, batch_size=128, printer=printer)
 
 printer.print("Training SDAE-CLASSIFIER...")
@@ -150,14 +161,14 @@ printer.print("Error on training set:")
 sdae_classifier.test(sdae_classifier_train, flat_train[1])
 printer.print("Error on test set:")
 sdae_classifier.test(sdae_classifier_test, flat_test[1])
-'''
+
 #---------------------LSTM-----------------------
 printer.print("---------------------LSTM-----------------------")
 
-lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=50, 
-            output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='binary-brier-score',
+lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=100, 
+            output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
             optimization_function='gradient-descent', learning_rate=0.1, learning_rate_decay='none', batch_size=32, 
-            epochs=10, cost_mask=rnn_cost_mask, noise='none', printer=printer)
+            epochs=1, cost_mask=rnn_cost_mask, noise='none', printer=printer)
 
 printer.print("Training LSTM...")
 lstm.train(rnn_train[0], rnn_train[1], rnn_train[2])
@@ -165,14 +176,14 @@ printer.print("Error on training set:")
 lstm.test(rnn_train[0], rnn_train[1], rnn_train[2])
 printer.print("Error on test set:")
 lstm.test(rnn_test[0], rnn_test[1], rnn_test[2])
-'''
+
 #-------------------SDAE-LSTM--------------------
 printer.print("-------------------SDAE-LSTM--------------------")
 
 sdae_lstm_train = sdae.timeseries_encode(rnn_train[0])
 sdae_lstm_test = sdae.timeseries_encode(rnn_test[0])
 sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=sdae_output_size, state_size=50, 
-            output_size=output_size, loss_function='weighted-sed-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
+            output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
             optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
             epochs=1, cost_mask=rnn_cost_mask, noise='none', printer=printer)
 
@@ -182,4 +193,3 @@ printer.print("Error on training set:")
 sdae_lstm.test(sdae_lstm_train, rnn_train[1], rnn_train[2])
 printer.print("Error on test set:")
 sdae_lstm.test(sdae_lstm_test, rnn_test[1], rnn_test[2])
-'''
