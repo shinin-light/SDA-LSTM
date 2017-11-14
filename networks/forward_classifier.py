@@ -39,7 +39,8 @@ class ForwardClassifier:
         with tf.variable_scope(self.scope_name) as scope:
             self.x = tf.placeholder(dtype=tf.float32, shape=[None, self.input_size], name='x')
             self.y = tf.placeholder(dtype=tf.float32, shape=[None, self.output_size], name='y')
-            
+            self.lr = tf.placeholder(tf.float32)
+
             initializer = utils.get_initializer(self.initialization_function)
 
             if(self.depth > 0):
@@ -68,7 +69,7 @@ class ForwardClassifier:
             self.output = output_activation(outputs)
 
             self.loss = utils.get_one_hot_loss(logits=outputs, labels=self.y, name=self.loss_function, cost_mask=self.cost_mask)
-            self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
+            self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.lr).minimize(self.loss)
 
             self.metric = utils.get_metric(logits=self.output, labels=self.y, name=self.metric_function)
             
@@ -103,12 +104,12 @@ class ForwardClassifier:
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
-                    sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y})
+                    sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.lr: self.learning_rate})
                     if debug:
-                        loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y})
+                        loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.lr: self.learning_rate})
                         self.writer.add_summary(summary, global_step=self.global_step)
                     else:
-                        loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y})
+                        loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y, self.lr: self.learning_rate})
                     avg_loss += loss
                     avg_metric += metric
 

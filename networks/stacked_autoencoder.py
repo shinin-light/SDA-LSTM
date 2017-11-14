@@ -49,7 +49,8 @@ class StackedAutoEncoder:
                     self.y.append(tf.placeholder(tf.float32, [None, self.input_size]))
                 else:
                     self.y.append(tf.placeholder(tf.float32, [None, self.dims[i - 1]]))
-            
+            self.lr = tf.placeholder(tf.float32)
+
             self.weights, self.biases = [], [] #ENC1, ENC2, ENC3, DEC3, DEC2, DEC1
             self.layerwise_encoded = [] #ENC1(X), ENC2(X), ENC3(X)
             self.layerwise_decoded = [] #DEC1(ENC1(X)), DEC2(ENC2(X)), DEC3(ENC3(X))
@@ -109,12 +110,12 @@ class StackedAutoEncoder:
             self.layerwise_optimizers = []
             for i in range(self.depth):
                 loss = utils.get_sdae_loss(logits=self.layerwise_decoded[self.depth - 1 - i], labels=self.y[i], name=self.loss_functions[i])
-                optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(loss)
+                optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.lr).minimize(loss)
                 self.layerwise_losses.append(loss)
                 self.layerwise_optimizers.append(optimizer)
 
             self.finetuning_loss = utils.get_sdae_loss(logits=self.decoded_data, labels=self.y[0], name=self.loss_functions[0])
-            self.finetuning_optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.finetuning_loss)
+            self.finetuning_optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.lr).minimize(self.finetuning_loss)
 
             #Saver
             self.saver = tf.train.Saver()
@@ -160,18 +161,18 @@ class StackedAutoEncoder:
                     self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                     for i in range(batches_per_epoch):
                         batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
-                        sess.run(self.layerwise_optimizers[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
+                        sess.run(self.layerwise_optimizers[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y, self.lr: self.learning_rate})
                         if debug:
-                            loss, summary = sess.run([self.layerwise_losses[layer], self.merged_summary[layer]], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
+                            loss, summary = sess.run([self.layerwise_losses[layer], self.merged_summary[layer]], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y, self.lr: self.learning_rate})
                             self.writer.add_summary(summary, global_step=self.global_step)
                         else:
-                            loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y})
+                            loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: batch_x, self.y[layer]: batch_y, self.lr: self.learning_rate})
                         avg_loss += loss
                         
                         self.global_step += 1
                     avg_loss /= batches_per_epoch
                     self.printer.print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
-                Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X})
+                Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X, self.lr: self.learning_rate})
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
     def finetune(self, Y, epochs=None, debug=False):
@@ -191,12 +192,12 @@ class StackedAutoEncoder:
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
-                    sess.run(self.finetuning_optimizer, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
+                    sess.run(self.finetuning_optimizer, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y, self.lr: self.learning_rate})
                     if debug:
-                        loss, summary = sess.run([self.finetuning_loss, self.finetuning_merged_summary], feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
+                        loss, summary = sess.run([self.finetuning_loss, self.finetuning_merged_summary], feed_dict={self.x[0]: batch_x, self.y[0]: batch_y, self.lr: self.learning_rate})
                         self.writer.add_summary(summary, global_step=self.global_step)
                     else:
-                        loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y})
+                        loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: batch_x, self.y[0]: batch_y, self.lr: self.learning_rate})
                     avg_loss += loss
                     self.global_step += 1
                 avg_loss /= batches_per_epoch

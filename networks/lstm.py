@@ -41,6 +41,8 @@ class Lstm:
         with tf.variable_scope(self.scope_name) as scope:
             self.x = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.input_size]) #batch - timeseries - input vector
             self.y = tf.placeholder(tf.float32, [self.batch_size, self.max_sequence_length, self.output_size]) #batch - timeseries - class vector
+            self.lr = tf.placeholder(tf.float32)
+
             self.sequence_length = tf.placeholder(tf.int32, [self.batch_size])
             initializer = utils.get_initializer(self.initialization_function)
             activation = utils.get_activation(self.activation_function)
@@ -57,7 +59,7 @@ class Lstm:
             self.output = output_activation(outputs)
 
             self.loss = utils.get_one_hot_loss(logits=outputs, labels=self.y, name=self.loss_function, cost_mask=self.cost_mask)
-            self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.learning_rate).minimize(self.loss)
+            self.optimizer = utils.get_optimizer(name=self.optimization_function, learning_rate=self.lr).minimize(self.loss)
 
             self.metric = utils.get_metric(logits=self.output, labels=self.y, name=self.metric_function)
         
@@ -94,12 +96,12 @@ class Lstm:
                 for i in range(batches_per_epoch):
                     batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
                     batch_x = utils.add_noise(batch_x, self.noise)
-                    sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                    sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length, self.lr: self.learning_rate})
                     if debug:
-                        loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                        loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length, self.lr: self.learning_rate})
                         self.writer.add_summary(summary, global_step=self.global_step)
                     else:
-                        loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                        loss, metric = sess.run([self.loss, self.metric], feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length, self.lr: self.learning_rate})
                     avg_loss += loss
                     avg_metric += metric
 
