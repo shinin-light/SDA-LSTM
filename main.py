@@ -8,7 +8,6 @@ from sklearn import utils as skutils
 from printer import Printer
 import os
 
-training_frac = 0.8
 apply_reduction = True
 class_is_yesno = True
 class_reduction = 5
@@ -21,75 +20,136 @@ for folder in folders:
         os.makedirs(folder)
 
 #----------------common-variables----------------
-e_values = np.load("./data/e_records.npy")
-e_classes = np.load("./data/e_classes.npy")
-t_values = np.load("./data/t_records.npy")
-t_classes = np.load("./data/t_classes.npy")
+e_values_training = np.load("./data/e_records_training.npy")
+e_classes_training = np.load("./data/e_classes_training.npy")
+t_values_training = np.load("./data/t_records_training.npy")
+t_classes_training = np.load("./data/t_classes_training.npy")
 
-e_values = np.concatenate((e_values, e_classes), axis=2)
-t_values = np.concatenate((t_values, t_classes), axis=2)
+e_values_validation = np.load("./data/e_records_validation.npy")
+e_classes_validation = np.load("./data/e_classes_validation.npy")
+t_values_validation = np.load("./data/t_records_validation.npy")
+t_classes_validation = np.load("./data/t_classes_validation.npy")
+
+e_values_test = np.load("./data/e_records_test.npy")
+e_classes_test = np.load("./data/e_classes_test.npy")
+t_values_test = np.load("./data/t_records_test.npy")
+t_classes_test = np.load("./data/t_classes_test.npy")
+
+e_values_training = np.concatenate((e_values_training, e_classes_training), axis=2)
+t_values_training = np.concatenate((t_values_training, t_classes_training), axis=2)
+
+e_values_validation = np.concatenate((e_values_validation, e_classes_validation), axis=2)
+t_values_validation = np.concatenate((t_values_validation, t_classes_validation), axis=2)
+
+e_values_test = np.concatenate((e_values_test, e_classes_test), axis=2)
+t_values_test = np.concatenate((t_values_test, t_classes_test), axis=2)
 
 if not class_is_yesno and class_reduction is not None:
-    e_classes = utils.reduce_classes_linear(e_classes, class_reduction)
-    t_classes = utils.reduce_classes_linear(t_classes, class_reduction)
+    e_classes_training = utils.reduce_classes_linear(e_classes_training, class_reduction)
+    t_classes_training = utils.reduce_classes_linear(t_classes_training, class_reduction)
 
-attributes_num = len(e_values[0][0])
-classes_num = len(e_classes[0][0])
+    e_classes_validation = utils.reduce_classes_linear(e_classes_validation, class_reduction)
+    t_classes_validation = utils.reduce_classes_linear(t_classes_validation, class_reduction)
 
-max_sequence_length = np.max([len(e_values[0]),len(t_values[0])])
-e_values, e_classes, e_yesno, e_lengths = utils.rnn_shift_padding(e_values, e_classes, max_sequence_length)
-t_values, t_classes, t_yesno, t_lengths = utils.rnn_shift_padding(t_values, t_classes, max_sequence_length)
+    e_classes_test = utils.reduce_classes_linear(e_classes_test, class_reduction)
+    t_classes_test = utils.reduce_classes_linear(t_classes_test, class_reduction)
+
+attributes_num = len(e_values_training[0][0])
+classes_num = len(e_classes_training[0][0])
+
+max_sequence_length = np.max([len(e_values_training[0]),len(t_values_training[0])])
+e_values_training, e_classes_training, e_yesno_training, e_lengths_training = utils.rnn_shift_padding(e_values_training, e_classes_training, max_sequence_length)
+t_values_training, t_classes_training, t_yesno_training, t_lengths_training = utils.rnn_shift_padding(t_values_training, t_classes_training, max_sequence_length)
+
+e_values_validation, e_classes_validation, e_yesno_validation, e_lengths_validation = utils.rnn_shift_padding(e_values_validation, e_classes_validation, max_sequence_length)
+t_values_validation, t_classes_validation, t_yesno_validation, t_lengths_validation = utils.rnn_shift_padding(t_values_validation, t_classes_validation, max_sequence_length)
+
+e_values_test, e_classes_test, e_yesno_test, e_lengths_test = utils.rnn_shift_padding(e_values_test, e_classes_test, max_sequence_length)
+t_values_test, t_classes_test, t_yesno_test, t_lengths_test = utils.rnn_shift_padding(t_values_test, t_classes_test, max_sequence_length)
 
 #if(apply_reduction):
 #    selection = np.random.choice(len(svm_e_values), min(len(svm_e_values), len(svmt_values)), replace=False)
 #    svm_e_values, svm_e_classes = svm_e_values[selection], svm_e_classes[selection]
 
-rnn_values = np.concatenate((e_values, t_values))
-rnn_classes = np.concatenate((e_classes, t_classes))
-rnn_yesno = np.concatenate((e_yesno, t_yesno))
-rnn_lengths = np.concatenate((e_lengths, t_lengths))
+rnn_values_training = np.concatenate((e_values_training, t_values_training))
+rnn_classes_training = np.concatenate((e_classes_training, t_classes_training))
+rnn_yesno_training = np.concatenate((e_yesno_training, t_yesno_training))
+rnn_lengths_training = np.concatenate((e_lengths_training, t_lengths_training))
 
-flat_values = np.reshape(rnn_values,(-1, attributes_num))
-flat_classes = np.reshape(rnn_classes,(-1, classes_num))
-flat_yesno = np.reshape(rnn_yesno,(-1, 2))
+rnn_values_validation = np.concatenate((e_values_validation, t_values_validation))
+rnn_classes_validation = np.concatenate((e_classes_validation, t_classes_validation))
+rnn_yesno_validation = np.concatenate((e_yesno_validation, t_yesno_validation))
+rnn_lengths_validation = np.concatenate((e_lengths_validation, t_lengths_validation))
+
+rnn_values_test = np.concatenate((e_values_test, t_values_test))
+rnn_classes_test = np.concatenate((e_classes_test, t_classes_test))
+rnn_yesno_test = np.concatenate((e_yesno_test, t_yesno_test))
+rnn_lengths_test = np.concatenate((e_lengths_test, t_lengths_test))
+
+flat_values_training = np.reshape(rnn_values_training,(-1, attributes_num))
+flat_classes_training = np.reshape(rnn_classes_training,(-1, classes_num))
+flat_yesno_training = np.reshape(rnn_yesno_training,(-1, 2))
+
+flat_values_validation = np.reshape(rnn_values_validation,(-1, attributes_num))
+flat_classes_validation = np.reshape(rnn_classes_validation,(-1, classes_num))
+flat_yesno_validation = np.reshape(rnn_yesno_validation,(-1, 2))
+
+flat_values_test = np.reshape(rnn_values_test,(-1, attributes_num))
+flat_classes_test = np.reshape(rnn_classes_test,(-1, classes_num))
+flat_yesno_test = np.reshape(rnn_yesno_test,(-1, 2))
 
 if class_is_yesno :
-    rnn_labels = rnn_yesno
-    flat_labels = flat_yesno
+    rnn_labels_training = rnn_yesno_training
+    flat_labels_training = flat_yesno_training
+
+    rnn_labels_validation = rnn_yesno_validation
+    flat_labels_validation = flat_yesno_validation
+
+    rnn_labels_test = rnn_yesno_test
+    flat_labels_test = flat_yesno_test
 else:
-    rnn_labels = rnn_classes
-    flat_labels = flat_classes
+    rnn_labels_training = rnn_classes_training
+    flat_labels_training = flat_classes_training
 
-rnn_train, rnn_test = utils.generate_rnn_train_test(rnn_values, rnn_labels, rnn_lengths, training_frac)
+    rnn_labels_validation = rnn_classes_validation
+    flat_labels_validation = flat_classes_validation
 
-flat_values, flat_labels = utils.homogenize(flat_values, flat_labels, 0) #just remove the invalid records.
+    rnn_labels_test = rnn_classes_test
+    flat_labels_test = flat_classes_test
 
-flat_train, flat_test = utils.generate_flat_train_test(flat_values, flat_labels, training_frac)
+flat_values_training, flat_labels_training = utils.homogenize(flat_values_training, flat_labels_training, 0) #just remove the invalid records.
+flat_values_validation, flat_labels_validation = utils.homogenize(flat_values_validation, flat_labels_validation, 0) #just remove the invalid records.
+flat_values_test, flat_labels_test = utils.homogenize(flat_values_test, flat_labels_test, 0) #just remove the invalid records.
 
-sdae_train_values, sdae_train_labels = utils.homogenize(flat_train[0], flat_train[1], 1) #balancing sdae training values.
-sdae_test_values, sdae_test_labels = utils.homogenize(flat_test[0], flat_test[1], 1) #balancing sdae test values.
+'''
+sdae_values_training, sdae_labels_training = utils.homogenize(flat_values_training, flat_labels_training, 1) #balancing sdae training values.
+
 sdae_train = np.concatenate((sdae_train_values, sdae_test_values))
 sdae_finetuning_train = sdae_train_values
+'''
 
-rnn_cost_mask = utils.get_cost_mask(rnn_labels)
+rnn_cost_mask = utils.get_cost_mask(np.concatenate((rnn_labels_training, rnn_labels_validation)))
 rnn_cost_mask /= np.mean(rnn_cost_mask)
 
-flat_cost_mask = utils.get_cost_mask(flat_labels)
+flat_cost_mask = utils.get_cost_mask(np.concatenate((flat_labels_training, flat_labels_validation)))
 flat_cost_mask /= np.mean(flat_cost_mask)
 
-#weights = skutils.compute_class_weight(class_weight='balanced', classes=np.array(range(10)), y=np.argmax(flat_classes, 1))
+input_size = len(rnn_values_training[0][0])
+output_size = len(rnn_labels_training[0][0])
 
+print(input_size)
+'''
+weights = skutils.compute_class_weight(class_weight='balanced', classes=np.array(range(10)), y=np.argmax(flat_classes, 1))
 alpha = 2
 
-input_size = len(rnn_train[0][0][0])
-output_size = len(rnn_train[1][0][0])
+
 rnn_hidden_size = (len(rnn_train[0])) / (alpha * (input_size + output_size))
 flat_hidden_size = (len(flat_train[0])) / (alpha * (input_size + output_size))
-
+'''
 #--------------------printer---------------------
 
 printer = Printer()
-
+'''
 #---------------------SDAE-----------------------
 printer.print("---------------------SDAE-----------------------")
 
@@ -134,17 +194,19 @@ sdae_svm.test(sdae_svm_test, flat_test[1])
 #------------------CLASSIFIER--------------------
 printer.print("------------------CLASSIFIER--------------------")
 
-classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[100], learning_rate_decay='fraction', 
+classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[100], learning_rate_decay='exponential', 
                             activation_functions=['sigmoid'], loss_function='weighted-softmax-cross-entropy', cost_mask=flat_cost_mask,
-                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=1, learning_rate=0.1, batch_size=64, 
-                            printer=printer)
+                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=100, learning_rate=0.05, batch_size=32, 
+                            printer=printer, early_stop_lookahead=5)
 
 printer.print("Training CLASSIFIER...")
-classifier.train(flat_train[0], flat_train[1])
+classifier.train(flat_values_training, flat_labels_training, flat_values_validation, flat_labels_validation)
 printer.print("Error on training set:")
-classifier.test(flat_train[0], flat_train[1])
+classifier.test(flat_values_training, flat_labels_training)
+printer.print("Error on validation set:")
+classifier.test(flat_values_validation, flat_labels_validation)
 printer.print("Error on test set:")
-classifier.test(flat_test[0], flat_test[1])
+classifier.test(flat_values_test, flat_labels_test)
 
 #----------------SDAE-CLASSIFIER-----------------
 printer.print("----------------SDAE-CLASSIFIER-----------------")
@@ -161,22 +223,24 @@ printer.print("Error on training set:")
 sdae_classifier.test(sdae_classifier_train, flat_train[1])
 printer.print("Error on test set:")
 sdae_classifier.test(sdae_classifier_test, flat_test[1])
-
+'''
 #---------------------LSTM-----------------------
 printer.print("---------------------LSTM-----------------------")
 
-lstm = Lstm(scope_name='basic-lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=100, 
+lstm = Lstm(scope_name='lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=100, 
             output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
-            optimization_function='gradient-descent', learning_rate=0.1, learning_rate_decay='none', batch_size=32, 
-            epochs=1, cost_mask=rnn_cost_mask, noise='none', printer=printer)
+            optimization_function='adam', learning_rate=0.001, learning_rate_decay='none', batch_size=32, 
+            epochs=50, cost_mask=rnn_cost_mask, noise='none', printer=printer, early_stop_lookahead=5)
 
 printer.print("Training LSTM...")
-lstm.train(rnn_train[0], rnn_train[1], rnn_train[2])
+lstm.train(rnn_values_training, rnn_labels_training, rnn_lengths_training, rnn_values_validation, rnn_labels_validation, rnn_lengths_validation)
 printer.print("Error on training set:")
-lstm.test(rnn_train[0], rnn_train[1], rnn_train[2])
+lstm.test(rnn_values_training, rnn_labels_training, rnn_lengths_training)
+printer.print("Error on validation set:")
+lstm.test(rnn_values_validation, rnn_labels_validation, rnn_lengths_validation)
 printer.print("Error on test set:")
-lstm.test(rnn_test[0], rnn_test[1], rnn_test[2])
-
+lstm.test(rnn_values_test, rnn_labels_test, rnn_lengths_test)
+'''
 #-------------------SDAE-LSTM--------------------
 printer.print("-------------------SDAE-LSTM--------------------")
 
@@ -193,3 +257,4 @@ printer.print("Error on training set:")
 sdae_lstm.test(sdae_lstm_train, rnn_train[1], rnn_train[2])
 printer.print("Error on test set:")
 sdae_lstm.test(sdae_lstm_test, rnn_test[1], rnn_test[2])
+'''

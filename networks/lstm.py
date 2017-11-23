@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import sys
 from utils import Utils as utils
 from printer import Printer as printer
 from tensorflow.contrib import rnn
@@ -13,7 +14,7 @@ class Lstm:
 
     def __init__(self, printer, max_sequence_length, input_size, state_size, output_size, loss_function, metric_function, activation_function='tanh',
                 initialization_function='uniform', optimization_function='gradient-descent', epochs=10, learning_rate=0.01, 
-                learning_rate_decay='none', noise='none', batch_size=16, cost_mask=np.array([]), scope_name='default'):
+                learning_rate_decay='none', noise='none', batch_size=16, cost_mask=np.array([]), scope_name='default', early_stop_lookahead=5):
         self.printer = printer
         self.max_sequence_length = max_sequence_length
         self.input_size = input_size
@@ -31,6 +32,7 @@ class Lstm:
         self.noise = noise
         self.batch_size = batch_size
         self.scope_name = scope_name
+        self.early_stop_lookahead = early_stop_lookahead
         if(not len(cost_mask) > 0): #TODO handle output_size <= 0
             cost_mask = np.ones(self.output_size, dtype=np.float32)        
         self.cost_mask = tf.reshape(tf.constant(np.tile(cost_mask, batch_size * max_sequence_length), dtype=tf.float32), (batch_size, max_sequence_length, output_size))
@@ -47,14 +49,11 @@ class Lstm:
             initializer = utils.get_initializer(self.initialization_function)
             activation = utils.get_activation(self.activation_function)
         
-            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, initializer=initializer) #TODO check if all the gates are present
+            cell = tf.nn.rnn_cell.LSTMCell(num_units=self.state_size, num_proj=self.output_size, initializer=initializer) #TODO check if all the gates are present
             #cell = tf.contrib.rnn.LayerNormBasicLSTMCell(num_units=self.state_size) #TODO check if all the gates are present
 
             outputs, status = tf.nn.dynamic_rnn(cell=cell, inputs=self.x, sequence_length=self.sequence_length, dtype=tf.float32)
 
-            weights = tf.get_variable('weights', shape=[self.state_size, self.output_size], initializer=initializer, dtype=tf.float32)
-            outputs = tf.reshape(tf.matmul(tf.reshape(outputs, (-1, self.state_size)), weights), (self.batch_size, self.max_sequence_length, self.output_size))
-            
             output_activation = utils.get_output_activation(self.loss_function)
             self.output = output_activation(outputs)
 
@@ -73,15 +72,18 @@ class Lstm:
             #Tensorboard
             tf.summary.histogram("weights", cell.weights[0])
             tf.summary.histogram("biases", cell.weights[1])
-            #tf.summary.histogram("output", cell.weights[2])
-            tf.summary.histogram("output", weights)
+            tf.summary.histogram("output", cell.weights[2])
             tf.summary.histogram("weights-gradient", tf.gradients(self.loss, [cell.weights[0]]))
             tf.summary.histogram("biases-gradient", tf.gradients(self.loss, [cell.weights[1]]))
             self.merged_summary = tf.summary.merge_all()
             self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\lstm", graph=tf.get_default_graph())
     
-    def train(self, X, Y, lengths, epochs=None, debug=False):
+    def train(self, X, Y, lengths, X_VAL, Y_VAL, lengths_VAL, epochs=None, debug=False):
         batches_per_epoch = int(len(X) / self.batch_size)
+        batches_per_epoch_val = int(len(X_VAL) / self.batch_size)
+        last_loss = sys.maxsize
+        lookahead_counter = 1
+
         self.global_step = 0
 
         if epochs is None:
@@ -94,7 +96,7 @@ class Lstm:
                 avg_metric = 0.
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
-                    batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X, Y, lengths, i * self.batch_size, self.batch_size)
+                    batch_x, batch_y, batch_length = utils.get_rnn_batch(X, Y, lengths, self.batch_size)
                     batch_x = utils.add_noise(batch_x, self.noise)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length, self.lr: self.learning_rate})
                     if debug:
@@ -109,8 +111,25 @@ class Lstm:
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
                 self.printer.print("Epoch {0}: loss = {1:.6f}, accuracy = {2:.6f}".format(epoch, avg_loss, avg_metric))
-            self.saver.save(sess, './weights/lstm/' + self.scope_name + '/checkpoint', global_step=0)
-    
+                
+
+                validation_loss = 0
+                for i in range(batches_per_epoch_val):
+                    batch_x, batch_y, batch_length = utils.get_rnn_sequential_batch(X_VAL, Y_VAL, lengths_VAL, i * self.batch_size, self.batch_size)
+                    validation_loss += sess.run(self.loss, feed_dict={self.x: batch_x, self.y: batch_y, self.sequence_length: batch_length})
+                validation_loss /= batches_per_epoch_val
+
+                if validation_loss < last_loss:
+                    self.printer.print("Validation loss: {0}".format(validation_loss))
+                    last_loss = validation_loss
+                    self.saver.save(sess, './weights/lstm/' + self.scope_name + '/checkpoint', global_step=0)
+                    lookahead_counter = 1
+                else:
+                    if lookahead_counter >= self.early_stop_lookahead: 
+                        break
+                    lookahead_counter += 1
+
+               
     def test(self, X, Y, lengths):
         batches_per_epoch = int(len(X) / self.batch_size)
 

@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import sys
 from utils import Utils as utils
 
 class ForwardClassifier:
@@ -10,7 +11,7 @@ class ForwardClassifier:
         assert self.epochs > 0, "No. of epochs must be at least 1"
 
     def __init__(self, printer, input_size, output_size, dims, activation_functions, loss_function, metric_function, optimization_function='gradient-descent', epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default', initialization_function='xavier'):
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default', initialization_function='xavier', early_stop_lookahead=5):
         self.printer = printer
         self.input_size = input_size
         self.output_size = output_size
@@ -26,6 +27,7 @@ class ForwardClassifier:
         self.dims = dims
         self.scope_name = scope_name
         self.initialization_function = initialization_function
+        self.early_stop_lookahead = early_stop_lookahead
         if(not len(cost_mask) > 0): #TODO handle output_size <= 0
             cost_mask = np.ones(self.output_size, dtype=np.float32)  
         self.cost_mask = tf.constant(cost_mask, dtype=tf.float32)
@@ -89,8 +91,11 @@ class ForwardClassifier:
             self.merged_summary = tf.summary.merge_all()
             self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\forward", graph=tf.get_default_graph())
 
-    def train(self, X, Y, epochs=None, debug=False):
+    def train(self, X, Y, X_VAL, Y_VAL, epochs=None, debug=False):
         batches_per_epoch = int(len(X) / self.batch_size)
+        last_loss = sys.maxsize
+        lookahead_counter = 1
+
         self.global_step = 0
 
         if epochs is None:
@@ -117,7 +122,18 @@ class ForwardClassifier:
                 avg_loss /= batches_per_epoch
                 avg_metric /= batches_per_epoch
                 self.printer.print('epoch {0}: loss = {1:.6f}, {2} = {3:.6f}'.format(epoch, avg_loss, self.metric_function, avg_metric))
-            self.saver.save(sess, './weights/forward/' + self.scope_name + '/checkpoint', global_step=0)
+                
+                validation_loss = sess.run(self.loss, feed_dict={self.x: X_VAL, self.y: Y_VAL})
+                
+                if validation_loss < last_loss:
+                    self.printer.print("Validation loss: {0}".format(validation_loss))
+                    last_loss = validation_loss
+                    self.saver.save(sess, './weights/forward/' + self.scope_name + '/checkpoint', global_step=0)
+                    lookahead_counter = 1
+                else:
+                    if lookahead_counter >= self.early_stop_lookahead: 
+                        break
+                    lookahead_counter += 1
 
     def test(self, X, Y, samples_shown=1):
         with tf.Session() as sess:

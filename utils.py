@@ -60,7 +60,7 @@ class Utils:
         if len(labels[0]) == 2:
             results['binary-brier-score'] = np.mean(np.square(labels[:,1:] - logits[:,1:]))
 
-        results['auc-roc'] = roc_auc_score(labels, logits) if len(labels[0]) == 2 else roc_auc_score(labels, logits, average='weighted')
+        results['auc-roc'] = roc_auc_score(labels, logits) if len(labels[0]) == 2 else roc_auc_score(labels, logits)
 
         confusion_matrix = [[0 for i in range(labels.shape[1])] for j in range(labels.shape[1])]
         emd = 0
@@ -136,8 +136,12 @@ class Utils:
     def get_optimizer(name, learning_rate):
         if name == 'gradient-descent':
             return tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        if name == 'nesterov':
+            return tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=0.9)
         elif name == 'adam':
             return tf.train.AdamOptimizer(learning_rate=learning_rate)
+        elif name == 'adadelta':
+            return tf.train.AdadeltaOptimizer(learning_rate=learning_rate)
         raise BaseException("Invalid optimizer.")
 
     def get_learning_rate(name, learning_rate, step):
@@ -299,7 +303,7 @@ class Utils:
         if noise == 'none':
             result = x
         elif noise == 'gaussian':
-            n = np.random.normal(0, 0.1, (len(x), len(x[0])))
+            n = np.random.normal(0, 0.05, (len(x), len(x[0])))
             result = x + n
         elif 'mask' in noise:
             frac = float(noise.split('-')[1])
