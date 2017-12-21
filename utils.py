@@ -69,7 +69,7 @@ class Utils:
             logit_idx = np.argmax(logits[i])
             confusion_matrix[label_idx][logit_idx] += 1
             emd += abs(label_idx - logit_idx)
-        results['confusion-matrix'] = confusion_matrix
+        #results['confusion-matrix'] = confusion_matrix
         emd /= len(labels)
 
         real = np.sum(confusion_matrix, 1)
@@ -85,6 +85,15 @@ class Utils:
 
         results['emd'] = emd
 
+        curves = [[0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0]]
+        for i in range(len(labels)):
+            value = int(logits[i][1] * 10)
+            target = int(labels[i][1])
+            #print(value, target)
+            curves[target][value] += 1
+            
+        print(curves)
+        
         return results
 
     def get_one_hot_loss(logits, labels, name, cost_mask=None):

@@ -155,27 +155,32 @@ printer.print("---------------------SDAE-----------------------")
 
 sdae_output_size = 50
 sdae = StackedAutoEncoder(scope_name='three-layers-sdae', input_size=input_size, dims=[150, 100, sdae_output_size], optimization_function='adam',
-                        encoding_functions=['tanh', 'tanh', 'tanh'], decoding_functions=['linear', 'tanh', 'tanh'],
-                        noise=['mask-0.7','gaussian','gaussian'], epochs=1, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
-                        learning_rate=0.01, learning_rate_decay='fraction', batch_size=128, printer=printer)
+                        encoding_functions=['softplus', 'softplus', 'softplus'], decoding_functions=['linear', 'softplus', 'softplus'],
+                        noise=['mask-0.7','gaussian','gaussian'], epochs=100, loss_functions=['sigmoid-cross-entropy','rmse','rmse'], 
+                        learning_rate=0.01, learning_rate_decay='exponential', batch_size=128, printer=printer, early_stop_lookahead=5)
 
 printer.print("Training SDAE...")
-sdae.train(sdae_train)
+sdae.train(flat_values_training, flat_values_validation)
 printer.print("Finetuning SDAE...")
-sdae.finetune(sdae_finetuning_train)
+sdae.finetune(flat_values_training, flat_values_validation)
 #sdae.test(flat_test[0], 1, threshold=0.1)
 
 #---------------------SVM------------------------
 printer.print("---------------------SVM------------------------")
 
-svm = Svm(cost_mask=flat_cost_mask, output_size=output_size, printer=printer)
+bs = [16, 32, 64, 128, 256, 512, 1024]
+for s in bs:
+    svm = Svm(cost_mask=flat_cost_mask, output_size=output_size, printer=printer, batch_size=s)
 
-printer.print("Training SVM...")
-svm.train(flat_train[0], flat_train[1])
-printer.print("Error on training set:")
-svm.test(flat_train[0], flat_train[1])
-printer.print("Error on test set:")
-svm.test(flat_test[0], flat_test[1])
+    printer.print("Training SVM... " + str(s))
+    svm.train(flat_values_training, flat_labels_training)
+    printer.print("Error on training set:")
+    svm.test(flat_values_training, flat_labels_training)
+    printer.print("Error on validation set:")
+    svm.test(flat_values_validation, flat_labels_validation)
+    printer.print("Error on test set:")
+    svm.test(flat_values_test, flat_labels_test)
+
 
 #--------------------SDAE-SVM--------------------
 printer.print("--------------------SDAE-SVM--------------------")
@@ -193,11 +198,25 @@ sdae_svm.test(sdae_svm_test, flat_test[1])
 
 #------------------CLASSIFIER--------------------
 printer.print("------------------CLASSIFIER--------------------")
+'''
+classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[300,300,300], learning_rate_decay='exponential', 
+                            activation_functions=['tanh', 'tanh', 'tanh'], loss_function='weighted-softmax-cross-entropy', cost_mask=flat_cost_mask,
+                            metric_function='one-hot-accuracy', optimization_function='adam', epochs=150, learning_rate=0.001, batch_size=128, 
+                            printer=printer, noise='gaussian', early_stop_lookahead=10)
 
-classifier = ForwardClassifier(scope_name='basic-forward', input_size=input_size, output_size=output_size, dims=[100], learning_rate_decay='exponential', 
-                            activation_functions=['sigmoid'], loss_function='weighted-softmax-cross-entropy', cost_mask=flat_cost_mask,
-                            metric_function='one-hot-accuracy', optimization_function='gradient-descent', epochs=100, learning_rate=0.05, batch_size=32, 
-                            printer=printer, early_stop_lookahead=5)
+printer.print("Training CLASSIFIER...")
+classifier.train(flat_values_training, flat_labels_training, flat_values_validation, flat_labels_validation)
+printer.print("Error on training set:")
+classifier.test(flat_values_training, flat_labels_training)
+printer.print("Error on validation set:")
+classifier.test(flat_values_validation, flat_labels_validation)
+printer.print("Error on test set:")
+classifier.test(flat_values_test, flat_labels_test)
+'''
+classifier = ForwardClassifier(scope_name='basic-forward-1', input_size=input_size, output_size=output_size, dims=[400], learning_rate_decay='exponential', 
+                            activation_functions=['tanh'], loss_function='weighted-softmax-cross-entropy', cost_mask=flat_cost_mask,
+                            metric_function='one-hot-accuracy', optimization_function='adam', epochs=150, learning_rate=0.01, batch_size=128, 
+                            printer=printer, noise='gaussian', early_stop_lookahead=5)
 
 printer.print("Training CLASSIFIER...")
 classifier.train(flat_values_training, flat_labels_training, flat_values_validation, flat_labels_validation)
@@ -223,14 +242,14 @@ printer.print("Error on training set:")
 sdae_classifier.test(sdae_classifier_train, flat_train[1])
 printer.print("Error on test set:")
 sdae_classifier.test(sdae_classifier_test, flat_test[1])
-'''
+
 #---------------------LSTM-----------------------
 printer.print("---------------------LSTM-----------------------")
 
-lstm = Lstm(scope_name='lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=100, 
+lstm = Lstm(scope_name='lstm', max_sequence_length=max_sequence_length, input_size=input_size, state_size=200, 
             output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
-            optimization_function='adam', learning_rate=0.001, learning_rate_decay='none', batch_size=32, 
-            epochs=50, cost_mask=rnn_cost_mask, noise='none', printer=printer, early_stop_lookahead=5)
+            optimization_function='adam', learning_rate=0.001, learning_rate_decay='exponential', batch_size=32, 
+            epochs=100, cost_mask=rnn_cost_mask, noise='gaussian', printer=printer, early_stop_lookahead=10)
 
 printer.print("Training LSTM...")
 lstm.train(rnn_values_training, rnn_labels_training, rnn_lengths_training, rnn_values_validation, rnn_labels_validation, rnn_lengths_validation)
@@ -240,21 +259,24 @@ printer.print("Error on validation set:")
 lstm.test(rnn_values_validation, rnn_labels_validation, rnn_lengths_validation)
 printer.print("Error on test set:")
 lstm.test(rnn_values_test, rnn_labels_test, rnn_lengths_test)
-'''
+
 #-------------------SDAE-LSTM--------------------
 printer.print("-------------------SDAE-LSTM--------------------")
 
-sdae_lstm_train = sdae.timeseries_encode(rnn_train[0])
-sdae_lstm_test = sdae.timeseries_encode(rnn_test[0])
-sdae_lstm = Lstm(scope_name='sdae-lstm', max_sequence_length=max_sequence_length, input_size=sdae_output_size, state_size=50, 
+sdae_lstm_train = sdae.timeseries_encode(rnn_values_training)
+sdae_lstm_validation = sdae.timeseries_encode(rnn_values_validation)
+sdae_lstm_test = sdae.timeseries_encode(rnn_values_test)
+lstm = Lstm(scope_name='lstm', max_sequence_length=max_sequence_length, input_size=sdae_output_size, state_size=200, 
             output_size=output_size, loss_function='weighted-softmax-cross-entropy', initialization_function='xavier', metric_function='one-hot-accuracy',
-            optimization_function='gradient-descent', learning_rate=0.05, learning_rate_decay='fraction', batch_size=32, 
-            epochs=1, cost_mask=rnn_cost_mask, noise='none', printer=printer)
+            optimization_function='adam', learning_rate=0.001, learning_rate_decay='exponential', batch_size=64, 
+            epochs=100, cost_mask=rnn_cost_mask, noise='gaussian', printer=printer, early_stop_lookahead=5)
 
-printer.print("Training SDAE-LSTM...")
-sdae_lstm.train(sdae_lstm_train, rnn_train[1], rnn_train[2])
+printer.print("Training LSTM...")
+lstm.train(sdae_lstm_train, rnn_labels_training, rnn_lengths_training, sdae_lstm_validation, rnn_labels_validation, rnn_lengths_validation)
 printer.print("Error on training set:")
-sdae_lstm.test(sdae_lstm_train, rnn_train[1], rnn_train[2])
+lstm.test(sdae_lstm_train, rnn_labels_training, rnn_lengths_training)
+printer.print("Error on validation set:")
+lstm.test(sdae_lstm_validation, rnn_labels_validation, rnn_lengths_validation)
 printer.print("Error on test set:")
-sdae_lstm.test(sdae_lstm_test, rnn_test[1], rnn_test[2])
+lstm.test(sdae_lstm_test, rnn_labels_test, rnn_lengths_test)
 '''

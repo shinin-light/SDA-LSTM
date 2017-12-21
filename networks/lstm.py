@@ -128,7 +128,7 @@ class Lstm:
                     if lookahead_counter >= self.early_stop_lookahead: 
                         break
                     lookahead_counter += 1
-
+            #self.saver.save(sess, './weights/lstm/' + self.scope_name + '/checkpoint', global_step=0)
                
     def test(self, X, Y, lengths):
         batches_per_epoch = int(len(X) / self.batch_size)

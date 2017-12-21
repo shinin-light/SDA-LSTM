@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import sys
 from utils import Utils as utils
 
 class StackedAutoEncoder:
@@ -13,7 +14,7 @@ class StackedAutoEncoder:
         assert utils.noise_validator(self.noise) == True, "Invalid noises."
 
     def __init__(self, printer, input_size, dims, encoding_functions, decoding_functions, loss_functions, optimization_function, noise, epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default', initialization_function='xavier'):
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, scope_name='default', initialization_function='xavier', early_stop_lookahead=5):
         self.printer = printer
         self.input_size = input_size
         self.batch_size = batch_size
@@ -29,6 +30,7 @@ class StackedAutoEncoder:
         self.dims = dims
         self.depth = len(dims)
         self.scope_name = scope_name
+        self.early_stop_lookahead = early_stop_lookahead
         self.initialization_function = initialization_function
         self.weights, self.biases, self.decoding_biases = [], [], []
         self.assertions()
@@ -79,7 +81,6 @@ class StackedAutoEncoder:
 
                 previous_size = hidden_size
 
-            previous_size = self.dims[self.depth - 1]
             for i in range(self.depth - 1, -1, -1):
                 hidden_size = self.dims[i - 1] if i > 0 else self.input_size
 
@@ -93,18 +94,14 @@ class StackedAutoEncoder:
                 output_activation = utils.get_output_activation(self.loss_functions[i])
                 if(len(self.decoded) == 0):
                     self.decoded.append(output_activation(decoding_function(tf.matmul(self.encoded[self.depth - 1], decoding_weights) + decoding_biases)))
-                elif i > 0:
-                    self.decoded.append(output_activation(decoding_function(tf.matmul(self.decoded[len(self.decoded) - 1], decoding_weights) + decoding_biases)))
                 else:
-                    self.decoded.append(decoding_function(tf.matmul(self.decoded[len(self.decoded) - 1], decoding_weights) + decoding_biases))
+                    self.decoded.append(output_activation(decoding_function(tf.matmul(self.decoded[len(self.decoded) - 1], decoding_weights) + decoding_biases)))
 
-                self.layerwise_decoded.append(decoding_function(tf.matmul(self.layerwise_encoded[i], decoding_weights) + decoding_biases))
-
-                previous_size = hidden_size
+                self.layerwise_decoded.append(output_activation(decoding_function(tf.matmul(self.layerwise_encoded[i], decoding_weights) + decoding_biases)))
 
             self.encoded_data = self.encoded[self.depth - 1]
             self.decoded_data = self.decoded[self.depth - 1]
-            self.output = output_activation(self.decoded_data)
+            self.output = self.decoded_data
 
             self.layerwise_losses = []
             self.layerwise_optimizers = []
@@ -142,8 +139,9 @@ class StackedAutoEncoder:
 
             self.writer = tf.summary.FileWriter("C:\\Users\\danie\\Documents\\SDA-LSTM\\logs\\sdae", graph=tf.get_default_graph())
 
-    def train(self, Y, epochs=None, debug=False):
+    def train(self, Y, X_VAL, epochs=None, debug=False):
         batches_per_epoch = int(len(Y) / self.batch_size)
+        
         self.global_step = 0
 
         if epochs is None:
@@ -152,6 +150,9 @@ class StackedAutoEncoder:
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             for layer in range(self.depth):
+                last_loss = sys.maxsize
+                lookahead_counter = 1
+
                 self.printer.print('Layer {0}'.format(layer + 1))
                 tmp = np.copy(Y)
                 tmp = utils.add_noise(tmp, self.noise[layer])
@@ -172,11 +173,27 @@ class StackedAutoEncoder:
                         self.global_step += 1
                     avg_loss /= batches_per_epoch
                     self.printer.print("Epoch {0}: loss = {1:.6f}".format(epoch, avg_loss))
-                Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X, self.lr: self.learning_rate})
-            self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
+            
+                    validation_loss = sess.run(self.layerwise_losses[layer], feed_dict={self.x[layer]: X_VAL, self.y[layer]: X_VAL})
+                
+                    if validation_loss < last_loss:
+                        self.printer.print("Validation loss: {0}".format(validation_loss))
+                        last_loss = validation_loss
+                        #self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
+                        lookahead_counter = 1
+                    else:
+                        if lookahead_counter >= self.early_stop_lookahead: 
+                            break
+                        lookahead_counter += 1
+                self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0) 
+                Y = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: Y, self.lr: self.learning_rate})
+                X_VAL = sess.run(self.layerwise_encoded[layer], feed_dict={self.x[layer]: X_VAL, self.lr: self.learning_rate})
+            #self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
-    def finetune(self, Y, epochs=None, debug=False):
+    def finetune(self, Y, X_VAL, epochs=None, debug=False):
         self.printer.print('Fine Tuning')
+        last_loss = sys.maxsize
+        lookahead_counter = 1
 
         if epochs is None:
             epochs = self.epochs
@@ -202,6 +219,18 @@ class StackedAutoEncoder:
                     self.global_step += 1
                 avg_loss /= batches_per_epoch
                 self.printer.print('epoch {0}: loss = {1:.6f}'.format(epoch, avg_loss))
+
+                validation_loss = sess.run(self.finetuning_loss, feed_dict={self.x[0]: X_VAL, self.y[0]: X_VAL})
+                
+                if validation_loss < last_loss:
+                    self.printer.print("Validation loss: {0}".format(validation_loss))
+                    last_loss = validation_loss
+                    #self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
+                    lookahead_counter = 1
+                else:
+                    if lookahead_counter >= self.early_stop_lookahead: 
+                        break
+                    lookahead_counter += 1
             self.saver.save(sess, './weights/sdae/' + self.scope_name + '/checkpoint', global_step=0)
 
     def encode(self, data):

@@ -39,6 +39,21 @@ class Svm:
             if Y[i] == outputs[i]:
                 true_positives += 1
         
-        [self.printer.print("class {0}, accuracy = {1:.2f}, values = {2}".format(i+1, self.confusion_matrix[i][i] / np.sum(self.confusion_matrix[i]), self.confusion_matrix[i])) for i in range(len(self.confusion_matrix))]
-        self.printer.print("Total accuracy = {0:.2f}%".format(true_positives * 100 / np.sum(self.confusion_matrix)))
-        return self.confusion_matrix
+        results = {}
+        real = np.sum(self.confusion_matrix, 1)
+        predicted = np.sum(self.confusion_matrix, 0)
+        total = np.sum(self.confusion_matrix)
+        
+        sum_classifier = 0
+        sum_prob_classifier = 0
+        accuracy = 0
+        for i in range(len(self.confusion_matrix)):
+            sum_classifier += self.confusion_matrix[i][i]
+            sum_prob_classifier += real[i] * predicted[i] / total
+        results['accuracy'] = sum_classifier / total
+        results['k-statistic'] = (sum_classifier - sum_prob_classifier) / (total - sum_prob_classifier)
+        #results['confusion-matrix'] = self.confusion_matrix
+        
+        for m in results:
+            self.printer.print('\t {0}: {1}'.format(m, results[m]))
+        return results

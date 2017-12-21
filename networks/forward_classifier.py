@@ -11,7 +11,7 @@ class ForwardClassifier:
         assert self.epochs > 0, "No. of epochs must be at least 1"
 
     def __init__(self, printer, input_size, output_size, dims, activation_functions, loss_function, metric_function, optimization_function='gradient-descent', epochs=10,
-                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default', initialization_function='xavier', early_stop_lookahead=5):
+                 learning_rate=0.001, learning_rate_decay='none', batch_size=100, cost_mask=np.array([]), scope_name='default', initialization_function='xavier', noise='none', early_stop_lookahead=5):
         self.printer = printer
         self.input_size = input_size
         self.output_size = output_size
@@ -27,6 +27,7 @@ class ForwardClassifier:
         self.dims = dims
         self.scope_name = scope_name
         self.initialization_function = initialization_function
+        self.noise = noise
         self.early_stop_lookahead = early_stop_lookahead
         if(not len(cost_mask) > 0): #TODO handle output_size <= 0
             cost_mask = np.ones(self.output_size, dtype=np.float32)  
@@ -109,6 +110,7 @@ class ForwardClassifier:
                 self.learning_rate = utils.get_learning_rate(self.learning_rate_decay, self.initial_learning_rate, epoch)
                 for i in range(batches_per_epoch):
                     batch_x, batch_y = utils.get_batch(X, Y, self.batch_size)
+                    batch_x = utils.add_noise(batch_x, self.noise)
                     sess.run(self.optimizer, feed_dict={self.x: batch_x, self.y: batch_y, self.lr: self.learning_rate})
                     if debug:
                         loss, metric, summary = sess.run([self.loss, self.metric, self.merged_summary], feed_dict={self.x: batch_x, self.y: batch_y, self.lr: self.learning_rate})
@@ -134,6 +136,7 @@ class ForwardClassifier:
                     if lookahead_counter >= self.early_stop_lookahead: 
                         break
                     lookahead_counter += 1
+           # self.saver.save(sess, './weights/forward/' + self.scope_name + '/checkpoint', global_step=0)
 
     def test(self, X, Y, samples_shown=1):
         with tf.Session() as sess:
